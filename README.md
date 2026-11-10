@@ -12,7 +12,8 @@
 01-cuda-matmul/
 ├── 01-naive/             # 线程映射、边界与正确性
 ├── 02-coalesced-access/ # 访存模式与性能对照
-└── 03-shared-memory-tiling/ # block 内的数据复用
+├── 03-shared-memory-tiling/ # block 内的数据复用
+└── 04-register-tiling/ # 每线程多个输出与寄存器累加
 scripts/                  # 共用的 Windows 安装与构建脚本
 ```
 
@@ -22,4 +23,4 @@ scripts/                  # 共用的 Windows 安装与构建脚本
 2. 如何写出正确的矩阵乘法 kernel。
 3. 如何用随机数据和非整齐尺寸检验结果。
 
-完成后继续 [实验 02：合并访存与线程映射](01-cuda-matmul/02-coalesced-access/README.md)。它用相同的矩阵乘法和相同的计算量，比较相邻线程负责相邻列或相邻行的效果。接着做 [实验 03：Shared Memory Tiling](01-cuda-matmul/03-shared-memory-tiling/README.md)，研究一个 block 怎样合作保存和复用 A、B 的数据。
+完成后继续 [实验 02：合并访存与线程映射](01-cuda-matmul/02-coalesced-access/README.md)。它用相同的矩阵乘法和相同的计算量，比较相邻线程负责相邻列或相邻行的效果。接着做 [实验 03：Shared Memory Tiling](01-cuda-matmul/03-shared-memory-tiling/README.md)，研究一个 block 怎样合作保存和复用 A、B 的数据。然后做 [实验 04：Register Tiling](01-cuda-matmul/04-register-tiling/README.md)，研究一个线程怎样复用数据计算多个输出。
