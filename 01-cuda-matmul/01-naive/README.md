@@ -54,6 +54,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 
 观察模式使用 `512×512×512` 矩阵，连续发射短 Kernel 约 10 秒。正常模式的 `37×53×29` 计算太快，任务管理器通常采样不到。观察模式结束后仍会进行 CPU 参考结果校验；这个模式用于看硬件活动，不用于性能比较。
 
+完成正确性练习后，可以运行最初的 naive kernel 的计时模式：
+
+```powershell
+.\scripts\build-windows.ps1 -Lesson Naive -Benchmark
+```
+
+它使用 `1×1024×1024`、`64×1024×1024`、`1024×1024×1024` 三种形状，抽查 CPU 参考值，并用 CUDA event 计时。kernel 本身没有因计时模式而改变。结果汇总在[性能记录](../BENCHMARKS.md)。
+
 ## 在 Linux / WSL 上运行
 
 在安装了 CUDA Toolkit 的 Ubuntu / WSL 终端中执行：
@@ -63,6 +71,8 @@ cd /mnt/e/Coder/LLM/llm-inference-lab/01-cuda-matmul/01-naive
 nvcc -O2 -std=c++17 -arch=sm_120 sgemm_naive.cu -o sgemm_naive
 ./sgemm_naive
 ```
+
+计时模式在 Linux / WSL 下运行 `./sgemm_naive --benchmark`。
 
 运行后应看到 `PASS` 和最大绝对误差。程序用固定种子的随机数生成输入，并以 CPU 计算作为参考。当前尺寸 `M=37, N=53, K=29` 故意不能被 `16×16` 的 block 整除，用来检验边界处理。
 

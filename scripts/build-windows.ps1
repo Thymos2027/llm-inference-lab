@@ -1,10 +1,14 @@
 param(
-    [ValidateSet('Naive', 'Coalesced')][string]$Lesson = 'Naive',
-    [switch]$Observe
+    [ValidateSet('Naive', 'Coalesced', 'Tiled')][string]$Lesson = 'Naive',
+    [switch]$Observe,
+    [switch]$Benchmark
 )
 
-if ($Observe -and $Lesson -ne 'Naive') {
-    throw '-Observe is only available for the Naive lesson'
+if (($Observe -or $Benchmark) -and $Lesson -ne 'Naive') {
+    throw '-Observe and -Benchmark are only available for the Naive lesson'
+}
+if ($Observe -and $Benchmark) {
+    throw 'Choose either -Observe or -Benchmark'
 }
 
 $ErrorActionPreference = 'Stop'
@@ -20,11 +24,15 @@ if (-not $vsPath) { throw 'Visual Studio C++ Build Tools not found' }
 $vcvars = Join-Path $vsPath 'VC\Auxiliary\Build\vcvars64.bat'
 if (-not (Test-Path -LiteralPath $vcvars)) { throw "Missing $vcvars" }
 
-$lessonPath = if ($Lesson -eq 'Naive') { '01-cuda-matmul\01-naive\sgemm_naive' } else { '01-cuda-matmul\02-coalesced-access\sgemm_access' }
+$lessonPath = switch ($Lesson) {
+    'Naive' { '01-cuda-matmul\01-naive\sgemm_naive' }
+    'Coalesced' { '01-cuda-matmul\02-coalesced-access\sgemm_access' }
+    'Tiled' { '01-cuda-matmul\03-shared-memory-tiling\sgemm_tiled' }
+}
 $source = Join-Path $root "$lessonPath.cu"
 $output = Join-Path $root "$lessonPath.exe"
 $batch = Join-Path $root '.local\build-windows.cmd'
-$run = if ($Observe) { "`"$output`" --observe" } else { "`"$output`"" }
+$run = if ($Observe) { "`"$output`" --observe" } elseif ($Benchmark) { "`"$output`" --benchmark" } else { "`"$output`"" }
 @(
     '@echo off'
     "call `"$vcvars`" >nul"

@@ -88,7 +88,7 @@ void launch(Variant variant, const float* A, const float* B, float* C,
 
 float benchmark(Variant variant, const float* A, const float* B, float* C,
                 int M, int N, int K) {
-  constexpr int repetitions = 10;
+  constexpr int repetitions = 50;
   for (int i = 0; i < 3; ++i) launch(variant, A, B, C, M, N, K);
   CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -140,7 +140,10 @@ bool run_case(int M, int N, int K, bool measure) {
       for (int col = 0; col < N; ++col) {
         const size_t index = static_cast<size_t>(row) * N + col;
         float expected = baseline[index];
-        if (!measure) {
+        const bool check_cpu = !measure ||
+            ((row == 0 || row == M / 2 || row == M - 1) &&
+             (col == 0 || col == N / 2 || col == N - 1));
+        if (check_cpu) {
           double reference = 0.0;
           for (int k = 0; k < K; ++k) {
             reference += static_cast<double>(hA[static_cast<size_t>(row) * K + k]) *
@@ -178,5 +181,7 @@ bool run_case(int M, int N, int K, bool measure) {
 int main() {
   const bool small_passed = run_case(37, 53, 29, false);
   if (!small_passed) return EXIT_FAILURE;
+  if (!run_case(1, 1024, 1024, true)) return EXIT_FAILURE;
+  if (!run_case(64, 1024, 1024, true)) return EXIT_FAILURE;
   return run_case(1024, 1024, 1024, true) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
