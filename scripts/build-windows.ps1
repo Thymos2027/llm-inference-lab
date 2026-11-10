@@ -20,7 +20,7 @@ if (-not $vsPath) { throw 'Visual Studio C++ Build Tools not found' }
 $vcvars = Join-Path $vsPath 'VC\Auxiliary\Build\vcvars64.bat'
 if (-not (Test-Path -LiteralPath $vcvars)) { throw "Missing $vcvars" }
 
-$lessonPath = if ($Lesson -eq 'Naive') { '01-cuda-basics\sgemm_naive' } else { '02-coalesced-access\sgemm_access' }
+$lessonPath = if ($Lesson -eq 'Naive') { '01-cuda-matmul\01-naive\sgemm_naive' } else { '01-cuda-matmul\02-coalesced-access\sgemm_access' }
 $source = Join-Path $root "$lessonPath.cu"
 $output = Join-Path $root "$lessonPath.exe"
 $batch = Join-Path $root '.local\build-windows.cmd'

@@ -43,7 +43,7 @@ Windows PowerShell，在项目根目录执行：
 .\scripts\build-windows.ps1 -Lesson Coalesced
 ```
 
-Linux / WSL，在 `02-coalesced-access` 目录执行：
+Linux / WSL，在 `01-cuda-matmul/02-coalesced-access` 目录执行：
 
 ```bash
 nvcc -O2 -std=c++17 -arch=sm_120 sgemm_access.cu -o sgemm_access

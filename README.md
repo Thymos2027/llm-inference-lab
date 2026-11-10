@@ -2,12 +2,21 @@
 
 这里按「一个概念、一个实验、一个可检查的结果」学习 GPU 编程与推理系统。
 
-## 从哪里开始
+## 目录与学习顺序
 
-先做 [实验 01：CUDA 线程与最简单的矩阵乘法](01-cuda-basics/README.md)。它只解决三个问题：
+目前的矩阵乘法练习统一放在 [01-cuda-matmul](01-cuda-matmul/README.md)，每节实验各自保存源码和说明：
+
+```text
+01-cuda-matmul/
+├── 01-naive/             # 线程映射、边界与正确性
+└── 02-coalesced-access/ # 访存模式与性能对照
+scripts/                  # 共用的 Windows 安装与构建脚本
+```
+
+先做 [实验 01：CUDA 线程与最简单的矩阵乘法](01-cuda-matmul/01-naive/README.md)。它只解决三个问题：
 
 1. CUDA 的 grid、block、thread 如何对应到输出矩阵。
 2. 如何写出正确的矩阵乘法 kernel。
 3. 如何用随机数据和非整齐尺寸检验结果。
 
-完成后继续 [实验 02：合并访存与线程映射](02-coalesced-access/README.md)。它用相同的矩阵乘法和相同的计算量，比较相邻线程负责相邻列或相邻行的效果。
+完成后继续 [实验 02：合并访存与线程映射](01-cuda-matmul/02-coalesced-access/README.md)。它用相同的矩阵乘法和相同的计算量，比较相邻线程负责相邻列或相邻行的效果。后续练习开始时再建对应目录；测量数据和解释放在所属实验附近。

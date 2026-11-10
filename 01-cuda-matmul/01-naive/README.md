@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 在安装了 CUDA Toolkit 的 Ubuntu / WSL 终端中执行：
 
 ```bash
-cd /mnt/e/Coder/LLM/llm-inference-lab/01-cuda-basics
+cd /mnt/e/Coder/LLM/llm-inference-lab/01-cuda-matmul/01-naive
 nvcc -O2 -std=c++17 -arch=sm_120 sgemm_naive.cu -o sgemm_naive
 ./sgemm_naive
 ```
