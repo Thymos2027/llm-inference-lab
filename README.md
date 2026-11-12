@@ -2,6 +2,13 @@
 
 这里按「一个概念、一个实验、一个可检查的结果」学习 GPU 编程与推理系统。
 
+## 目前的成果
+
+- 从 naive、合并访存对照、shared memory tiling 到 register tiling，逐步实现并比较 FP32 CUDA 矩阵乘法 kernel；用非整齐尺寸和 CPU 参考结果检查正确性。
+- 在 RTX 5060 Ti 上，对 `1024×1024×1024` 矩阵乘法进行同程序配对测量：register tiling 的中位 kernel 时间为 `0.402 ms`，相对 tiled 版本的 `1.076 ms` 为 `2.68×`。测量只包含 kernel，不包含数据准备、传输或校验；[完整方法和结果](01-cuda-matmul/BENCHMARKS.md)。
+- 记录不同形状的限制：在 `1×1024×1024` 上，同一 register tiling 版本为 `0.060 ms`，慢于 tiled 版本的 `0.025 ms`。这组实验目前聚焦 FP32 矩阵乘法，尚不是完整 LLM 推理服务的吞吐测试。
+- 使用 CUDA Event 计时，并通过 Nsight Compute、Nsight Systems 和 SASS 检查性能现象；[TM 参数与指令分析](01-cuda-matmul/04-register-tiling/TM_ANALYSIS.md)。
+
 ## 目录与学习顺序
 
 目前的矩阵乘法练习统一放在 [01-cuda-matmul](01-cuda-matmul/README.md)，每节实验各自保存源码和说明：
