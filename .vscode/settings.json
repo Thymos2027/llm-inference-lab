@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.cu": "cuda-cpp",
+        "*.cuh": "cuda-cpp"
+    },
+    "editor.occurrencesHighlight": "singleFile",
+    "C_Cpp.intelliSenseEngine": "default"
+}
