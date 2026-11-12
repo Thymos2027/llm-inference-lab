@@ -4,7 +4,8 @@ param(
     [switch]$Benchmark,
     [switch]$BuildOnly,
     [ValidateSet(4, 8, 16, 32)][int]$ThreadTileM = 8,
-    [ValidateRange(0, 16)][int]$KUnroll = 0
+    [ValidateRange(0, 16)][int]$KUnroll = 0,
+    [string]$Arch = ''
 )
 
 if (($Observe -or $Benchmark) -and $Lesson -ne 'Naive') {
@@ -36,6 +37,18 @@ if (-not $vsPath) { throw 'Visual Studio C++ Build Tools not found' }
 $vcvars = Join-Path $vsPath 'VC\Auxiliary\Build\vcvars64.bat'
 if (-not (Test-Path -LiteralPath $vcvars)) { throw "Missing $vcvars" }
 
+$arch = if ($Arch) {
+    $Arch
+} else {
+    $cc = (& nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits 2>$null | Select-Object -First 1)
+    if ($cc -and $cc -match '^\s*(\d+)\.(\d+)\s*$') {
+        "sm_$($Matches[1])$($Matches[2])"
+    } else {
+        throw "Cannot auto-detect GPU compute capability via nvidia-smi (got '$cc'). Pass -Arch sm_86 / sm_120 explicitly."
+    }
+}
+Write-Host "Target architecture: $arch"
+
 $lessonPath = switch ($Lesson) {
     'Naive' { '01-cuda-matmul\01-naive\sgemm_naive' }
     'Coalesced' { '01-cuda-matmul\02-coalesced-access\sgemm_access' }
@@ -55,7 +68,7 @@ $lineInfo = if ($Lesson -in @('Nsight', 'NsightPractice')) { '-lineinfo ' } else
     '@echo off'
     "call `"$vcvars`" >nul"
     'if errorlevel 1 exit /b 1'
-    "`"$nvcc`" -O2 -std=c++17 -arch=sm_120 -Xcompiler /utf-8 $lineInfo$tmDefine$unrollDefine`"$source`" -o `"$output`""
+    "`"$nvcc`" -O2 -std=c++17 -arch=$arch -Xcompiler /utf-8 $lineInfo$tmDefine$unrollDefine`"$source`" -o `"$output`""
     'if errorlevel 1 exit /b 1'
     $run
 ) | Set-Content -LiteralPath $batch -Encoding Ascii

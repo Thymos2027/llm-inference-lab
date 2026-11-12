@@ -28,21 +28,21 @@ scripts/                  # 共用的 Windows 安装与构建脚本
 
 ## 本机工具与 `.local` 目录
 
-以下是 2026-11-11 在本机核对过的 Windows 环境。`.local/` 被 Git 忽略，保存工具环境、安装包缓存、编译产物和性能分析报告；克隆仓库后不会自动拥有这些文件。CUDA 工具在 `.local` 中，Nsight 的实际可执行文件则位于本机其他目录。
+以下 Windows 环境已在两台机器上核对：RTX 5060 Ti（2026-11-11）与 RTX 3060（2026-11-12）。`.local/` 被 Git 忽略，保存工具环境、安装包缓存、编译产物和性能分析报告；克隆仓库后不会自动拥有这些文件。CUDA 工具在 `.local` 中，Nsight 的实际可执行文件则位于本机其他目录。
 
 | 工具 | 本机版本与位置 | 在项目中的用途 |
 | --- | --- | --- |
-| NVIDIA GPU 与驱动 | GeForce RTX 5060 Ti，驱动 610.88，compute capability 12.0 | 运行 CUDA kernel；本机编译目标为 `sm_120`。 |
+| NVIDIA GPU 与驱动 | ① GeForce RTX 5060 Ti，驱动 610.88，compute capability 12.0（`sm_120`）；② GeForce RTX 3060，驱动 621.14，compute capability 8.6（`sm_86`） | 运行 CUDA kernel；[build-windows.ps1](scripts/build-windows.ps1) 通过 `nvidia-smi` 自动检测本机架构，也可用 `-Arch sm_86` / `-Arch sm_120` 显式指定。 |
 | CUDA 编译器与运行库 | CUDA 13.3；`nvcc 13.3.73`，位于 `.local/cuda-13.3/Library/bin/` | 编译 `.cu`，提供 CUDA Runtime 和头文件；环境由 [setup-windows-cuda.ps1](scripts/setup-windows-cuda.ps1) 配置。[build-windows.ps1](scripts/build-windows.ps1) 会从该目录寻找 `nvcc.exe`。 |
 | `cuobjdump`、`nvdisasm` | 分别为 13.3.73、13.3.29；均位于 `.local/cuda-13.3/Library/bin/` | 查看编译后的 SASS 机器指令，例如实验 04 中的 `LDS.64` 与 `LDS.128`。 |
 | Nsight Compute (`ncu`) | 2026.4.0；可执行文件路径见 `.local/profilers/nsight-compute-path.txt` | 采集单个 kernel 的指令、occupancy、等待等指标，报告格式为 `.ncu-repz`。 |
-| Nsight Systems (`nsys`) | 2026.6.1；可执行文件路径见 `.local/profilers/nsight-systems-path.txt` | 查看 CUDA 调用与 kernel 执行时间线，报告格式为 `.nsys-rep`。 |
+| Nsight Systems (`nsys`) | 5060 Ti 机 2026.6.1、3060 机 2026.5.2；可执行文件路径见 `.local/profilers/nsight-systems-path.txt` | 查看 CUDA 调用与 kernel 执行时间线，报告格式为 `.nsys-rep`。 |
 | aria2 (`aria2c`) | 1.37.0；位于 `.local/profilers/aria2/` | 下载 Nsight 安装包时支持断点续传；不参与 kernel 编译或计时。 |
 | Visual Studio 2022 Build Tools | 安装在系统目录，由 `vswhere.exe` 定位 | 提供 Windows C++ 宿主编译器；构建脚本通过 `vcvars64.bat` 配置环境。 |
 | Conda | 安装在系统目录；本项目环境位于 `.local/cuda-13.3/` | 安装 CUDA 编译器、运行库和反汇编工具；`.local/conda-pkgs/` 是安装包缓存。 |
 | VS Code C/C++ 扩展 | `ms-vscode.cpptools` 1.35.6，安装在 VS Code 扩展目录 | 提供 CUDA C++ 源码的编辑器导航与 Outline；不影响命令行编译。 |
 
-Nsight Compute 和 Nsight Systems 的程序分别解压在本机 `E:\N`、`E:\S`，不是 `.local` 中的程序。`.local/profilers/` 保存下载包、路径文件、安装状态、验证结果及示例报告；其中 `validation.json` 记录了 `ncu` 的 GPU 采样和 `nsys` 的 CUDA trace 均已通过。`setup-profilers-windows.ps1`、`setup-disasm.ps1` 等临时安装脚本也保存在该目录，**没有纳入 Git**。
+Nsight Compute 和 Nsight Systems 的程序在 5060 Ti 机上分别解压在 `E:\N`、`E:\S`，在 3060 机上经 conda 安装在 `D:\nsight`，都不是 `.local` 中的程序。`.local/profilers/` 保存路径文件、验证结果及示例报告；其中 `validation.json` 记录了 `ncu` 的 GPU 采样和 `nsys` 的 CUDA trace 均已通过。注意 `ncu` 访问 GPU 性能计数器默认需要管理员权限（报 `ERR_NVGPUCTRPERM`）：可在 NVIDIA App「系统 → 高级 → 开发者 → 管理 GPU 性能计数器」允许所有用户访问，或从管理员终端运行 `profile-windows.ps1`；`nsys` 普通权限即可。
 
 其他实验目录：`.local/tm-sweep/` 保存 `TM` 参数扫描产物，`.local/tm-profile/` 保存 Nsight Compute 与 SASS 分析，`.local/tm-deep/` 保存 K 循环展开的受控计时 CSV 和报告。正文结论见[实验 04 的 TM 分析](01-cuda-matmul/04-register-tiling/TM_ANALYSIS.md)；这些本机原始文件不会随仓库同步。
 

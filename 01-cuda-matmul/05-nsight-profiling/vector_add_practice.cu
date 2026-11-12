@@ -21,11 +21,10 @@ __global__ void vector_add_practice(const float* a, const float* b, float* c,
                                     int n) {
   // TODO 1：用 blockIdx.x、blockDim.x 和 threadIdx.x 算出全局线程编号。
   const int index = blockIdx.x * blockDim.x + threadIdx.x;
-  c[index] = a[index] + b[index];
-  // if (index < n)
-  // {
-  //   c[index] = a[index] + b[index];
-  // }
+  if (index < n)
+  {
+    c[index] = a[index] + b[index];
+  }
   
 
   // TODO 2：只有 index 对应有效元素时，才计算 c[index] = a[index] + b[index]。
