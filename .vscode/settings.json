@@ -4,5 +4,10 @@
         "*.cuh": "cuda-cpp"
     },
     "editor.occurrencesHighlight": "singleFile",
-    "C_Cpp.intelliSenseEngine": "default"
+    "C_Cpp.intelliSenseEngine": "default",
+    "C_Cpp.default.defines": ["__CUDACC__"],
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/.local/cuda-13.3/Library/include",
+        "${workspaceFolder}/**"
+    ]
 }

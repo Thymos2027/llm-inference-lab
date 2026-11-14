@@ -23,7 +23,8 @@
 ├── 02-coalesced-access/ # 访存模式与性能对照
 ├── 03-shared-memory-tiling/ # block 内的数据复用
 ├── 04-register-tiling/ # 每线程多个输出与寄存器累加
-└── 05-nsight-profiling/ # 用 Vector Add 学习 Nsight 性能分析
+├── 05-nsight-profiling/ # 用 Vector Add 学习 Nsight 性能分析
+└── 06-tensor-core/      # 混合精度矩阵乘法与 Tensor Core
 02-triton-kernels/       # Triton 算子与融合，阶段说明已建
 03-nano-vllm/            # 推理引擎源码与改造，阶段说明已建
 scripts/                  # 共用的 Windows 安装与构建脚本
@@ -35,7 +36,7 @@ scripts/                  # 共用的 Windows 安装与构建脚本
 2. 如何写出正确的矩阵乘法 kernel。
 3. 如何用随机数据和非整齐尺寸检验结果。
 
-完成后继续 [实验 02：合并访存与线程映射](01-cuda-matmul/02-coalesced-access/README.md)。它用相同的矩阵乘法和相同的计算量，比较相邻线程负责相邻列或相邻行的效果。接着做 [实验 03：Shared Memory Tiling](01-cuda-matmul/03-shared-memory-tiling/README.md)，研究一个 block 怎样合作保存和复用 A、B 的数据。然后做 [实验 04：Register Tiling](01-cuda-matmul/04-register-tiling/README.md)，研究一个线程怎样复用数据计算多个输出。完成这些 kernel 后，用 [实验 05：Nsight 性能分析](01-cuda-matmul/05-nsight-profiling/README.md) 建立“计时 → 采集 → 解释瓶颈”的方法。
+完成后继续 [实验 02：合并访存与线程映射](01-cuda-matmul/02-coalesced-access/README.md)。它用相同的矩阵乘法和相同的计算量，比较相邻线程负责相邻列或相邻行的效果。接着做 [实验 03：Shared Memory Tiling](01-cuda-matmul/03-shared-memory-tiling/README.md)，研究一个 block 怎样合作保存和复用 A、B 的数据。然后做 [实验 04：Register Tiling](01-cuda-matmul/04-register-tiling/README.md)，研究一个线程怎样复用数据计算多个输出。完成这些 kernel 后，用 [实验 05：Nsight 性能分析](01-cuda-matmul/05-nsight-profiling/README.md) 建立“计时 → 采集 → 解释瓶颈”的方法，再进入 [实验 06：Tensor Core 入门](01-cuda-matmul/06-tensor-core/README.md)。
 
 ## 本机工具与 `.local` 目录
 

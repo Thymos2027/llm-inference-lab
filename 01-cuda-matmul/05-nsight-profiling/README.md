@@ -107,3 +107,5 @@ CUDA Event、Nsight Systems 和 Nsight Compute 来自不同运行，采集方式
 4. Nsight Systems 的 kernel 时间为什么不必与 100 次 CUDA Event 的平均时间完全相同？
 
 下一小节将实现矩阵复制、naive transpose 和 shared-memory transpose，让合并访存的差异直接出现在报告中。
+
+完成 transpose、现有 SGEMM 分析和同精度 cuBLAS 对照后，进入[实验 06：Tensor Core 矩阵乘法入门](../06-tensor-core/README.md)。
