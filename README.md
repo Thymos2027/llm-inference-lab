@@ -2,6 +2,8 @@
 
 这里按「一个概念、一个实验、一个可检查的结果」学习 GPU 编程与推理系统。
 
+整体路线、当前任务、[Triton kernels](02-triton-kernels/README.md)与 [nano-vLLM](03-nano-vllm/README.md) 两个后续项目，以及各阶段验收标准见[学习计划](LEARNING_PLAN.md)。
+
 ## 目前的成果
 
 - 从 naive、合并访存对照、shared memory tiling 到 register tiling，逐步实现并比较 FP32 CUDA 矩阵乘法 kernel；用非整齐尺寸和 CPU 参考结果检查正确性。
@@ -11,7 +13,7 @@
 
 ## 目录与学习顺序
 
-目前的矩阵乘法练习统一放在 [01-cuda-matmul](01-cuda-matmul/README.md)，每节实验各自保存源码和说明：
+目前的矩阵乘法练习统一放在 [01-cuda-matmul](01-cuda-matmul/README.md)，每节实验各自保存源码和说明。后续项目是 [Triton kernels](02-triton-kernels/README.md) 与 [nano-vLLM](03-nano-vllm/README.md)：
 
 各版本的实测数据见 [FP32 矩阵乘法性能记录](01-cuda-matmul/BENCHMARKS.md)。
 
@@ -22,6 +24,8 @@
 ├── 03-shared-memory-tiling/ # block 内的数据复用
 ├── 04-register-tiling/ # 每线程多个输出与寄存器累加
 └── 05-nsight-profiling/ # 用 Vector Add 学习 Nsight 性能分析
+02-triton-kernels/       # Triton 算子与融合，阶段说明已建
+03-nano-vllm/            # 推理引擎源码与改造，阶段说明已建
 scripts/                  # 共用的 Windows 安装与构建脚本
 ```
 
