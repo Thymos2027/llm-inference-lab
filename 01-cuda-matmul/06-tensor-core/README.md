@@ -1,6 +1,6 @@
 # 实验 06：Tensor Core 矩阵乘法入门
 
-实验 05 建立了正确性、计时和 profiler 分析方法。本实验沿用同一套方法，学习 Tensor Core 的矩阵乘加，并弄清输入精度、累加精度和性能数字各代表什么。目前已完成单 tile 正确性、Tensor Core 路径验证，以及一次 FP16 输入量化的单点观察；接下来扩展到多 tile，再进行同精度 cuBLAS 对照。
+实验 05 建立了正确性、计时和 profiler 分析方法。本实验沿用同一套方法，学习 Tensor Core 的矩阵乘加，并弄清输入精度、累加精度和性能数字各代表什么。目前已完成单 tile 正确性、Tensor Core 路径验证、一次 FP16 输入量化的单点观察、多 tile 与 K 方向循环，以及同精度 cuBLAS 对照与计时；接下来处理非 16 倍数的形状。
 
 ## 单 tile 练习文件
 
@@ -40,7 +40,60 @@
 
 做练习前先在纸上回答：`M=64, N=48, K=32` 时一共几个 C tile？负责 C 第 32–47 行、第 16–31 列的是哪个 block？它在 `k0=16` 时 A tile 和 B tile 的起始下标是多少？
 
-这一步只验证正确性，不计时：一个 block 只有一个 warp，A/B 直接从 global memory 加载，没有 shared memory 复用，性能不具代表性。通过后再做 FP16 输入、FP32 累加的 cuBLAS 对照与计时，之后处理非 16 倍数的形状。
+这一步只验证正确性，不计时：一个 block 只有一个 warp，A/B 直接从 global memory 加载，没有 shared memory 复用，性能不具代表性。
+
+2026-11-15 本机练习版三处 TODO 已由学习者填完，三种默认形状均 `PASS`。
+
+## 同精度 cuBLAS 对照与计时
+
+[wmma_cublas.cu](wmma_cublas.cu) 直接编译[多 tile 参考版](wmma_multitile_reference.cu)的 `wmma_multi_tile` kernel（定义 `WMMA_KERNELS_ONLY` 跳过其 `main`），与 `cublasGemmEx` 对照。两边精度一致：A、B 为 `CUDA_R_16F` 行主序，C 为 `CUDA_R_32F` 行主序，cuBLAS 用 `CUBLAS_COMPUTE_32F`（FP32 累加）与默认 math mode，允许使用 Tensor Core。cuBLAS 按列主序解释矩阵，调用时交换 A/B 与 M/N。
+
+```powershell
+.\scripts\build-windows.ps1 -Lesson TensorCoreCublas
+```
+
+测量口径沿用实验 05：
+
+- 输入为 `[-1,1]` 均匀分布，先转换成 FP16 再上传；两种方法共用同一组设备数组。
+- **正确性**：小形状 `64×48×32` 检查全部输出，不计时；计时形状检查 9 个代表位置。参考值以 FP16 输入、double 累加计算，阈值 `1e-5 + 1e-4 × Σ|a·b|`。另外逐元素比较 wmma 与 cuBLAS 的全部输出，阈值 `1e-5 × K`。计算前把 C 填成 NaN，以发现漏写的输出。
+- **计时**：只计 GPU 计算，不含数据生成、分配、拷贝和检查。每种方法预热 3 次、每轮连续 launch 50 次并用 CUDA Event 计时，两种方法交错跑 3 轮，取中位轮的单次平均。cuBLAS 若拆成多个 kernel（见下文的 split-K），计时包含全部 kernel。
+
+2026-11-15 本机 RTX 3060（`sm_86`）结果，全部形状 `PASS`（单位 ms，越小越好）：
+
+| `M×N×K` | wmma（1 warp / block） | cuBLAS FP16→FP32 | cuBLAS / wmma 速度比 | cuBLAS GFLOP/s |
+| --- | ---: | ---: | ---: | ---: |
+| `16×1024×1024` | `0.02312` | `0.02929` | `0.79×` | `1146` |
+| `64×1024×1024` | `0.02800` | `0.02877` | `0.97×` | `4665` |
+| `1024×1024×1024` | `0.38648` | `0.12621` | `3.06×` | `17015` |
+| `2048×2048×2048` | `2.74733` | `0.74938` | `3.67×` | `22925` |
+| `4096×4096×4096` | `75.99187` | `5.94121` | `12.79×` | `23133` |
+
+同日重跑一次，速度比依次为 `0.78× / 0.98× / 3.20× / 3.68× / 12.94×`，结论不变，单次运行之间相差约 5% 以内。
+
+wmma 在 `1024³` 到 `2048³` 约为 `5.6`–`6.3` TFLOP/s，到 `4096³` 骤降到 `1.8` TFLOP/s。按 28 个 SM、每 SM 每周期 256 次 FP16→FP32 FMA、boost 频率 1777 MHz 估算，本卡 FP16 输入、FP32 累加的稠密峰值约 `25.5` TFLOP/s（按白皮书口径推算，非实测）；cuBLAS 在大方阵上约达其 90%。
+
+### Nsight Compute 观察
+
+用 `wmma_cublas.exe --profile wmma|cublas M N K` 单次 launch（零输入），以 `ncu --metrics` 采集。以下为单次 profiler 运行的数字，不与上表的 Event 时间混算：
+
+| 形状 / 方法 | kernel | tensor 指令 | tensor 管线占用 | DRAM 读 | L2 命中率 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `1024³` wmma | `wmma_multi_tile` | `524,288` | `11.2%` | `23.3 MB` | `87.7%` |
+| `1024³` cuBLAS | `ampere_s1688gemm_fp16_128x128…` | `1,048,576` | `45.2%` | `8.6 MB` | `82.3%` |
+| `4096³` wmma | `wmma_multi_tile` | `33,554,432` | `3.75%` | `8.86 GB` | `31.4%` |
+| `4096³` cuBLAS | `cutlass_80_tensorop_s16816gemm_f16_256x128…` | `33,554,432` | `46.8%` | `1.09 GB` | `42.0%` |
+| `16×1024×1024` cuBLAS | `ampere_s16816gemm…` + `splitKreduce_kernel` | `65,536` | `33.7%` | `2.2 MB` | `24.1%` |
+
+指标分别为 `smsp__inst_executed_pipe_tensor.sum`、`sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_active`、`dram__bytes_read.sum`、`lts__t_sector_hit_rate.pct`。
+
+- **两边都走了 Tensor Core。**wmma 每个 `16×16×16` 执行 2 条 tensor 指令：`1024³` 有 `64³=262,144` 个，共 `524,288` 条。cuBLAS 在 `1024³` 选了 `m16n8k8`（`s1688`）kernel，指令数翻倍；在 `4096³` 选了 `m16n8k16`（`s16816`）kernel，指令数与 wmma 相同。指令数相同而时间差约 10 倍，说明差距不在算术本身，而在喂数据。
+- **wmma 慢在没有数据复用。**每个 block 只算一个 `16×16` 的 C tile，要从 global memory 读入 A 的整条 `16×K` 行带和 B 的整条 `K×16` 列带，相邻 block 读的同一段数据只能靠 L2 共享。`1024³` 时 A、B 共 4 MB，L2 命中率达 88%。`4096³` 时 A、B 共 64 MB，远超 L2，命中率掉到 31%，DRAM 读取 8.86 GB，是 A、B 本身大小的约 140 倍，tensor 管线只有 3.75% 时间在工作。cuBLAS 用 `128×128` / `256×128` 的大 block tile，先放进 shared memory，让每个读入的元素参与更多次乘加，DRAM 读取只有 1.09 GB。
+- **小 M 时 wmma 反而更快。**`M=16` 只有一行 C tile，wmma 的 grid 为 64 个 block；cuBLAS 选了 split-K：主 kernel 把 K 切成两半并行（grid `16×1×2`），再由 `splitKreduce_kernel` 合并，Event 时间包含两个 kernel 和额外的 launch 开销。这只说明 cuBLAS 在该形状上的启发式选择不占优，不说明 wmma 写法更好；`M=64` 时两者已基本持平。
+- 在 `1024³` 及以上，wmma 与 cuBLAS 的全部输出逐元素完全相同（max abs diff 为 0），推测两者在 K 方向的 FP32 累加顺序一致；`M≤64` 时差约 `1e-4`，在阈值内，其中 `M=16` 可确认是 split-K 改变了累加顺序（`M=64` 未单独 profile）。
+
+跨精度参考（**不是同精度加速比**）：实验 05 中严格 FP32 cuBLAS 在 `1024³` 为 `0.34259` ms，本页 FP16 输入、FP32 累加的 cuBLAS 为 `0.12621` ms。前者不使用 Tensor Core，输入精度也不同，这只说明换用 FP16 输入后能用上 Tensor Core 的工作负载取舍。
+
+下一步处理非 16 倍数的形状。若想缩小与 cuBLAS 的差距，可先让一个 block 内多个 warp 共用 shared memory 中的 A/B tile，再用 Nsight 看 DRAM 读取与 tensor 管线占用如何变化。
 
 ## 实验顺序
 

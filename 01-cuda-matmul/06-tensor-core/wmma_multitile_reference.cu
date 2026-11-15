@@ -52,6 +52,9 @@ __global__ void wmma_multi_tile(const __half* a, const __half* b, float* c,
   wmma::store_matrix_sync(c_tile, c_frag, n, wmma::mem_row_major);
 }
 
+// Lessons that reuse this kernel define WMMA_KERNELS_ONLY to skip the test driver.
+#ifndef WMMA_KERNELS_ONLY
+
 struct Shape { int m, n, k; };
 
 // Returns true when every element passes.
@@ -172,3 +175,5 @@ int main(int argc, char** argv) {
   std::printf("\nOverall: %s\n", all_pass ? "PASS" : "FAIL");
   return all_pass ? EXIT_SUCCESS : EXIT_FAILURE;
 }
+
+#endif  // WMMA_KERNELS_ONLY

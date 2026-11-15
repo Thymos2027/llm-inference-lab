@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Naive', 'Coalesced', 'Tiled', 'Register', 'Nsight', 'NsightPractice', 'Transpose', 'SgemmCublas', 'TensorCorePractice', 'TensorCoreReference', 'TensorCoreMultiPractice', 'TensorCoreMultiReference')][string]$Lesson = 'Naive',
+    [ValidateSet('Naive', 'Coalesced', 'Tiled', 'Register', 'Nsight', 'NsightPractice', 'Transpose', 'SgemmCublas', 'TensorCorePractice', 'TensorCoreReference', 'TensorCoreMultiPractice', 'TensorCoreMultiReference', 'TensorCoreCublas')][string]$Lesson = 'Naive',
     [switch]$Observe,
     [switch]$Benchmark,
     [switch]$BuildOnly,
@@ -62,6 +62,7 @@ $lessonPath = switch ($Lesson) {
     'TensorCoreReference' { '01-cuda-matmul\06-tensor-core\wmma_reference' }
     'TensorCoreMultiPractice' { '01-cuda-matmul\06-tensor-core\wmma_multitile_practice' }
     'TensorCoreMultiReference' { '01-cuda-matmul\06-tensor-core\wmma_multitile_reference' }
+    'TensorCoreCublas' { '01-cuda-matmul\06-tensor-core\wmma_cublas' }
 }
 $source = Join-Path $root "$lessonPath.cu"
 $output = Join-Path $root "$lessonPath.exe"
@@ -69,8 +70,8 @@ $batch = Join-Path $root '.local\build-windows.cmd'
 $run = if ($BuildOnly) { '' } elseif ($Observe) { "`"$output`" --observe" } elseif ($Benchmark) { "`"$output`" --benchmark" } else { "`"$output`"" }
 $tmDefine = if ($Lesson -eq 'Register') { "-DTHREAD_TILE_M=$ThreadTileM " } else { '' }
 $unrollDefine = if ($Lesson -eq 'Register' -and $KUnroll -gt 0) { "-DREGISTER_K_UNROLL=$KUnroll " } else { '' }
-$lineInfo = if ($Lesson -in @('Nsight', 'NsightPractice', 'Transpose', 'SgemmCublas', 'TensorCorePractice', 'TensorCoreReference', 'TensorCoreMultiPractice', 'TensorCoreMultiReference')) { '-lineinfo ' } else { '' }
-$cublasLink = if ($Lesson -eq 'SgemmCublas') {
+$lineInfo = if ($Lesson -in @('Nsight', 'NsightPractice', 'Transpose', 'SgemmCublas', 'TensorCorePractice', 'TensorCoreReference', 'TensorCoreMultiPractice', 'TensorCoreMultiReference', 'TensorCoreCublas')) { '-lineinfo ' } else { '' }
+$cublasLink = if ($Lesson -in @('SgemmCublas', 'TensorCoreCublas')) {
     $cublasLib = Join-Path $envPrefix 'Library\lib\x64\cublas.lib'
     if (-not (Test-Path -LiteralPath $cublasLib)) {
         throw 'cuBLAS development files missing. Install libcublas-dev in .local/cuda-13.3.'
