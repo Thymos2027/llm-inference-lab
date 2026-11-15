@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Naive', 'Coalesced', 'Tiled', 'Register', 'Nsight', 'NsightPractice', 'Transpose', 'SgemmCublas')][string]$Lesson = 'Naive',
+    [ValidateSet('Naive', 'Coalesced', 'Tiled', 'Register', 'Nsight', 'NsightPractice', 'Transpose', 'SgemmCublas', 'TensorCorePractice', 'TensorCoreReference', 'TensorCoreMultiPractice', 'TensorCoreMultiReference')][string]$Lesson = 'Naive',
     [switch]$Observe,
     [switch]$Benchmark,
     [switch]$BuildOnly,
@@ -58,6 +58,10 @@ $lessonPath = switch ($Lesson) {
     'NsightPractice' { '01-cuda-matmul\05-nsight-profiling\vector_add_practice' }
     'Transpose' { '01-cuda-matmul\05-nsight-profiling\transpose' }
     'SgemmCublas' { '01-cuda-matmul\05-nsight-profiling\sgemm_cublas' }
+    'TensorCorePractice' { '01-cuda-matmul\06-tensor-core\wmma_practice' }
+    'TensorCoreReference' { '01-cuda-matmul\06-tensor-core\wmma_reference' }
+    'TensorCoreMultiPractice' { '01-cuda-matmul\06-tensor-core\wmma_multitile_practice' }
+    'TensorCoreMultiReference' { '01-cuda-matmul\06-tensor-core\wmma_multitile_reference' }
 }
 $source = Join-Path $root "$lessonPath.cu"
 $output = Join-Path $root "$lessonPath.exe"
@@ -65,7 +69,7 @@ $batch = Join-Path $root '.local\build-windows.cmd'
 $run = if ($BuildOnly) { '' } elseif ($Observe) { "`"$output`" --observe" } elseif ($Benchmark) { "`"$output`" --benchmark" } else { "`"$output`"" }
 $tmDefine = if ($Lesson -eq 'Register') { "-DTHREAD_TILE_M=$ThreadTileM " } else { '' }
 $unrollDefine = if ($Lesson -eq 'Register' -and $KUnroll -gt 0) { "-DREGISTER_K_UNROLL=$KUnroll " } else { '' }
-$lineInfo = if ($Lesson -in @('Nsight', 'NsightPractice', 'Transpose', 'SgemmCublas')) { '-lineinfo ' } else { '' }
+$lineInfo = if ($Lesson -in @('Nsight', 'NsightPractice', 'Transpose', 'SgemmCublas', 'TensorCorePractice', 'TensorCoreReference', 'TensorCoreMultiPractice', 'TensorCoreMultiReference')) { '-lineinfo ' } else { '' }
 $cublasLink = if ($Lesson -eq 'SgemmCublas') {
     $cublasLib = Join-Path $envPrefix 'Library\lib\x64\cublas.lib'
     if (-not (Test-Path -LiteralPath $cublasLib)) {
