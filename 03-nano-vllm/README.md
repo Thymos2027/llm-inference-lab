@@ -2,12 +2,12 @@
 
 这是[学习计划](../LEARNING_PLAN.md)中的第三个项目阶段，目前优先于 Triton 推进。上游为 [GeeeekExplorer/nano-vllm](https://github.com/GeeeekExplorer/nano-vllm)。本机已有单独的 `D:\Coding\nano-vllm` 工作树，当前先使用其中的 Windows 单卡兼容实现学习推理流程。
 
-## 起点：2026-11-15 本机检查
+## 本机状态：截至 2026-11-16
 
-- `D:\Coding\nano-vllm` 的 HEAD 为 `bb823b3e06983d71485a8e1f23715ebd87d98ef8`（上游项目版本 `0.2.0`），`origin` 指向用户自己的 fork。Windows 兼容改动目前在该仓库的未提交工作树中；已将其完整改动保存为[windows-native.patch](windows-native.patch)，换机时使用“上游提交 + 补丁”复现。
+- `D:\Coding\nano-vllm` 的 HEAD 为 `bb823b3e06983d71485a8e1f23715ebd87d98ef8`（上游项目版本 `0.2.0`），`origin` 指向用户自己的 fork；其原有 Windows 改动仍在未提交工作树中。已把独立分支上的改进与依赖锁定合并为[windows-native.patch](windows-native.patch)，换机时使用“上游提交 + 补丁”复现。改进代码已提交为[上游 PR #300](https://github.com/GeeeekExplorer/nano-vllm/pull/300)；PR 为保持精简，没有包含本地 `.python-version` 和 `uv.lock`。
 - 模型位于 `C:\Users\gigappb\huggingface\Qwen3-0.6B\`，已有 `config.json`、tokenizer 文件和约 1.5 GB 的 `model.safetensors`；配置标明 `Qwen3ForCausalLM`、BF16。`example.py` 使用的 `~/huggingface/Qwen3-0.6B/` 在本机指向这份文件，无需再次下载。
 - 本机 RTX 3060 8 GB（`sm_86`）；该仓库已有 Windows `.venv`，其中 PyTorch `2.14.1+cu130` 检测到 CUDA，Transformers 为 `5.23.0`。Windows 单卡路径用 Gloo、PyTorch SDPA 注意力和未编译的 PyTorch 算子替代上游的 NCCL、FlashAttention 与 Triton；它适合先学习调度流程，不可直接用于上游性能对照。
-- `python -m unittest discover -s tests -v` 的三项 Windows 注意力检查通过。使用现有模型、`enforce_eager=True`、`tensor_parallel_size=1`、`max_model_len=max_num_batched_tokens=512`、`max_tokens=8` 的短生成也成功输出 8 个 token。尚未运行完整的 `example.py` 或基准。
+- `python -m unittest discover -s tests -v` 的四项 Windows 注意力检查通过。使用现有模型、`enforce_eager=True`、`tensor_parallel_size=1`、`max_model_len=max_num_batched_tokens=512`、`max_tokens=8` 的两请求短生成也成功输出，每个请求 8 个 token。尚未运行完整的 `example.py` 或基准。
 
 ## 在另一台 Windows 设备复现
 
@@ -25,7 +25,7 @@ Set-Location $nano
 uv sync --locked --python 3.12
 ```
 
-补丁包含 `.python-version`、`pyproject.toml` 和 `uv.lock`：Windows 使用官方 PyTorch CUDA 13.0 包，跳过 FlashAttention / Triton 依赖；单卡分布式初始化用 Gloo，注意力改由 PyTorch SDPA 计算。`uv sync` 会在新设备下载所需软件包并创建 `.venv`；本机已有环境，无须重建或重复下载。补丁仅适用于上面的上游提交，且不包含模型权重。
+补丁包含 `.python-version`、`pyproject.toml` 和 `uv.lock`：Windows 使用官方 PyTorch CUDA 13.0 包，跳过 FlashAttention / Triton 依赖；单卡分布式初始化用 Gloo 并关闭 libuv rendezvous，注意力改由 PyTorch SDPA 计算。`uv sync` 会在新设备下载所需软件包并创建 `.venv`；本机已有环境，无须重建或重复下载。补丁仅适用于上面的上游提交，且不包含模型权重。
 
 把现有 Qwen3-0.6B 模型**整目录**复制到新设备的 `$HOME\huggingface\Qwen3-0.6B\`，包括 `model.safetensors`、`config.json` 和 tokenizer 文件。若模型放在别处，下面的短生成通过 `$modelPath` 指向它，无须修改源码。先检查 GPU 包与注意力实现：
 
@@ -34,7 +34,7 @@ uv sync --locked --python 3.12
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-预期 CUDA 检查输出 `True`，三项注意力检查均为 `ok`。然后运行短生成（将模型路径改成新设备上的实际位置）：
+预期 CUDA 检查输出 `True`，四项注意力检查均为 `ok`。然后运行短生成（将模型路径改成新设备上的实际位置）：
 
 ```powershell
 $modelPath = Join-Path $HOME 'huggingface\Qwen3-0.6B'
@@ -54,6 +54,8 @@ print(llm.generate(["Hello, Nano-vLLM."],
 ```
 
 成功时会打印一个含 `text` 和 `token_ids` 的结果，`token_ids` 最多 8 个；随机采样的文字不必逐字相同。若出现显存不足，先关闭占用 GPU 的程序，再降低 `gpu_memory_utilization` 或 `max_model_len` 重新试。本路线目前只验证单卡 eager 短生成；Windows SDPA 路线与上游 FlashAttention 路线实现不同，不把两者的速度直接比较。
+
+性能差异主要来自实现：Windows 路线按请求调用 SDPA、组装因果 mask、从分页 KV cache 收集 token，并跳过 `torch.compile`；Linux 原版使用 FlashAttention、Triton KV 写入和编译后的逐元素算子。Windows 路线在长上下文或高并发下可能产生更多同步与 kernel launch，但尚无同一 GPU、模型、负载及计时口径下的 Windows/Linux 实测倍率。单卡 Gloo 与 NCCL 的差别不是当前主要计算路径。
 
 ## 首个可观察任务
 

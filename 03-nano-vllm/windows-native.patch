@@ -6,21 +6,22 @@ index 0000000..e4fba21
 @@ -0,0 +1 @@
 +3.12
 diff --git a/README.md b/README.md
-index eb468f3..5e7440f 100644
+index eb468f3..11ae6fc 100644
 --- a/README.md
 +++ b/README.md
-@@ -22,6 +22,21 @@ A lightweight vLLM implementation built from scratch.
+@@ -22,6 +22,22 @@ A lightweight vLLM implementation built from scratch.
  pip install git+https://github.com/GeeeekExplorer/nano-vllm.git
  ```
  
 +### Native Windows (single NVIDIA GPU)
 +
 +The Windows path uses PyTorch attention instead of Triton and FlashAttention, and supports
-+`tensor_parallel_size=1`. It is slower than the Linux CUDA path. With Python 3.10–3.12,
++`tensor_parallel_size=1`. Its performance has not been measured against the Linux path on
++the same hardware. With Python 3.12,
 +an NVIDIA driver compatible with CUDA 13.0, and `uv` installed, run in PowerShell:
 +
 +```powershell
-+uv sync
++uv sync --python 3.12
 +$env:PYTHONIOENCODING = "utf-8"
 +uv run .\example.py
 +```
@@ -31,7 +32,7 @@ index eb468f3..5e7440f 100644
  ## Model Download
  
  To download the model weights manually, use the following command:
-@@ -63,4 +78,4 @@ See `bench.py` for benchmark.
+@@ -63,4 +79,4 @@ See `bench.py` for benchmark.
  
  ## Star History
  
@@ -39,22 +40,25 @@ index eb468f3..5e7440f 100644
 \ No newline at end of file
 +[![Star History Chart](https://api.star-history.com/svg?repos=GeeeekExplorer/nano-vllm&type=Date)](https://www.star-history.com/#GeeeekExplorer/nano-vllm&Date)
 diff --git a/nanovllm/engine/model_runner.py b/nanovllm/engine/model_runner.py
-index 71d9883..6a06142 100644
+index 71d9883..3a5a6a2 100644
 --- a/nanovllm/engine/model_runner.py
 +++ b/nanovllm/engine/model_runner.py
-@@ -1,4 +1,5 @@
+@@ -1,4 +1,6 @@
  import pickle
++import os
 +import sys
  import torch
  import torch.distributed as dist
  from multiprocessing.synchronize import Event
-@@ -23,7 +24,10 @@ class ModelRunner:
+@@ -23,7 +25,12 @@ class ModelRunner:
          self.rank = rank
          self.event = event
  
 -        dist.init_process_group("nccl", "tcp://localhost:2333", world_size=self.world_size, rank=rank)
 +        if sys.platform == "win32" and self.world_size != 1:
 +            raise ValueError("Native Windows inference currently supports tensor_parallel_size=1 only")
++        if sys.platform == "win32":
++            os.environ.setdefault("USE_LIBUV", "0")
 +        backend = "gloo" if sys.platform == "win32" else "nccl"
 +        dist.init_process_group(backend, "tcp://localhost:2333", world_size=self.world_size, rank=rank)
          torch.cuda.set_device(rank)
@@ -429,10 +433,10 @@ index dc1399a..b4fb015 100644
 +explicit = true
 diff --git a/tests/test_attention_windows.py b/tests/test_attention_windows.py
 new file mode 100644
-index 0000000..f6d2c51
+index 0000000..9b88aeb
 --- /dev/null
 +++ b/tests/test_attention_windows.py
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,83 @@
 +import unittest
 +
 +import torch
@@ -464,6 +468,18 @@ index 0000000..f6d2c51
 +        v = torch.randn(3, 1, 4)
 +        set_context(True, torch.tensor([0, 3]), torch.tensor([0, 3]))
 +        torch.testing.assert_close(attention(q, k, v), reference(q, k, v, 0))
++
++    def test_prefill_multiple_sequences_without_cache(self):
++        torch.manual_seed(4)
++        attention = Attention(2, 4, 0.5, 1)
++        q = torch.randn(5, 2, 4)
++        k = torch.randn(5, 1, 4)
++        v = torch.randn(5, 1, 4)
++        offsets = torch.tensor([0, 2, 5])
++        set_context(True, offsets, offsets)
++        expected = torch.cat((reference(q[:2], k[:2], v[:2], 0),
++                              reference(q[2:], k[2:], v[2:], 0)))
++        torch.testing.assert_close(attention(q, k, v), expected)
 +
 +    def test_prefill_with_prefix_and_paged_cache(self):
 +        torch.manual_seed(2)
