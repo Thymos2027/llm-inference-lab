@@ -6,7 +6,7 @@
 2. 它主要忙于计算，还是忙于搬运数据？
 3. block、线程、寄存器和 occupancy 在报告中的什么位置？
 
-完整路线是 Vector Add → Matrix Transpose → 分析现有 SGEMM → 对照 cuBLAS。本页先完成 Vector Add。
+完整路线是 Vector Add → Matrix Transpose → 分析现有 SGEMM → 对照 cuBLAS。本页保留每一步的代码、测量口径和本机结果。
 
 ## Kernel 做了什么
 
@@ -106,6 +106,52 @@ CUDA Event、Nsight Systems 和 Nsight Compute 来自不同运行，采集方式
 3. Nsight Compute 中 Memory Throughput 和 Compute Throughput 哪个更接近上限？这说明了什么？
 4. Nsight Systems 的 kernel 时间为什么不必与 100 次 CUDA Event 的平均时间完全相同？
 
-下一小节将实现矩阵复制、naive transpose 和 shared-memory transpose，让合并访存的差异直接出现在报告中。
+## 矩阵复制与转置
 
-完成 transpose、现有 SGEMM 分析和同精度 cuBLAS 对照后，进入[实验 06：Tensor Core 矩阵乘法入门](../06-tensor-core/README.md)。
+[transpose.cu](transpose.cu) 中的三个 kernel 都用 `32×8` 线程块处理 `32×32` tile，输入为行主序 `A[height,width]`。`copy` 读写相同位置；`naive` 读取连续的行，但相邻线程写到相隔 `height` 个 FP32 元素的位置；`shared` 先把 tile 放进 `float tile[32][33]`，同步后交换线程的读写坐标，让全局读取和写入都连续。第 33 列用于避免转置读 shared memory 时的 32 路 bank conflict。边界条件覆盖非 32 倍数的宽和高。
+
+```powershell
+.\scripts\build-windows.ps1 -Lesson Transpose
+.\scripts\profile-windows.ps1 -Experiment Transpose
+```
+
+2026-11-14 在本机 RTX 3060 8 GB（`sm_86`、驱动 `621.24`）上，CUDA `nvcc 13.3.73`、`-O2 -std=c++17 -arch=sm_86 -lineinfo`。`37×53`、`129×257`、`4096×4096` 的所有输出逐元素精确相等。下表只计 GPU kernel：每版预热 5 次，每轮 CUDA Event 连续计时 100 次，三版交错做 3 轮，列出每版的中位轮平均值。输入和输出各占 64 MiB；有效带宽按“读一遍 + 写一遍”的 128 MiB 除以时间估算，不等于实际 DRAM 流量。
+
+| `4096×4096` | 中位 kernel 时间 | 语义有效带宽 | 相对 naive |
+| --- | ---: | ---: | ---: |
+| copy | `0.6233 ms` | `215.3 GB/s` | `2.64×` |
+| naive transpose | `1.6427 ms` | `81.7 GB/s` | `1.00×` |
+| shared transpose | `0.6616 ms` | `202.9 GB/s` | `2.48×` |
+
+同一形状的 Nsight Compute 报告在 `.local/profiles/05-transpose/`；每个 kernel 各有 `.nsys-rep` 和 `.ncu-repz`。以下数字来自单次 profiler 运行，不能与上表的 Event 时间混算速度比。
+
+| Kernel | NCU 时间 | DRAM Throughput | L1/TEX Throughput | 实际 occupancy |
+| --- | ---: | ---: | ---: | ---: |
+| copy | `1.26 ms` | `90.30%` | `17.19%` | `81.03%` |
+| naive transpose | `1.72 ms` | `42.64%` | `78.45%` | `80.57%` |
+| shared transpose | `0.630 ms` | `91.89%` | `16.87%` | `100.09%` |
+
+NCU 的 Memory Workload Analysis Tables 对 naive 报告：全局 store 的每个 32 字节 sector 平均只利用 4 字节。这与代码中相邻线程跨 `height` 写入一致；shared 通过 tile 改变输出线程分工，消除了这一访问模式。naive 的 L1/TEX 吞吐较高不代表有效带宽高：大量内存事务只写入少量有用字节。shared 的性能接近 copy，且 DRAM 吞吐接近上限。Profiler 会反复重放 kernel，copy 的单次 NCU 时间与稳态 Event 时间差异尤其明显；以同条件 Event 结果比较速度，NCU 用来解释访存。
+
+## 现有 SGEMM 与严格 FP32 cuBLAS
+
+[sgemm_cublas.cu](sgemm_cublas.cu) 直接编译[实验 04 的 naive、tiled、register kernel](../04-register-tiling/sgemm_register.cu)，并用 `cublasGemmEx` 对照。cuBLAS 设置 `CUBLAS_COMPUTE_32F_PEDANTIC` 与 `CUBLAS_PEDANTIC_MATH`，A、B、C 全是 FP32，不使用 TF32。由于 cuBLAS 按列主序解释矩阵，调用时交换 A/B 与 M/N，使相同数组得到行主序 `C=A×B`。四版共用同一组输入、输出形状和 CUDA Event 测量范围；计时只包含 GPU 计算，不包含生成数据、分配、拷贝和正确性检查。每版预热 3 次，每轮连续计时 50 次，四版交错做 3 轮，列出中位轮平均值。小非整齐形状对全部输出与 CPU double 累加参考比较；计时形状对 9 个代表位置与 CPU 比较，并把自写 kernel 的全部输出与 cuBLAS 逐元素比较。容差 `1e-3 + 2e-4×|reference|`；全部通过。
+
+本机补装了 NVIDIA conda 包 `libcublas-dev` / `libcublas` `13.5.1.27` 到 `.local/cuda-13.3`。其他机器若没有 cuBLAS，先安装开发库，再运行：
+
+```powershell
+.\scripts\build-windows.ps1 -Lesson SgemmCublas
+.\scripts\profile-windows.ps1 -Experiment Sgemm
+```
+
+2026-11-14 本机 RTX 3060、`sm_86` 的结果（单位：ms；数值越小越好）：
+
+| `M×N×K` | naive | tiled | register `TM=8` | cuBLAS pedantic FP32 | cuBLAS / register 速度比 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `1×1024×1024` | `0.04706` | `0.05773` | `0.13748` | `0.02173` | `6.33×` |
+| `64×1024×1024` | `0.21131` | `0.16607` | `0.13300` | `0.04383` | `3.03×` |
+| `1024×1024×1024` | `2.62214` | `1.99231` | `0.74646` | `0.34259` | `2.18×` |
+
+在 `1024³` 上采集现有三个 kernel，报告在 `.local/profiles/05-sgemm/`。NCU 的单次时间分别为 `3.29 / 2.06 / 0.778 ms`，与 Event 表的稳态时间不直接相减。三版的理论/实际 occupancy 分别是 `100/98.45%`、`100/98.37%`、`66.67/62.48%`；register 更快，虽然 occupancy 更低。它把每线程累加的输出从 1 个增到 8 个，同一 B 值参与更多计算，grid 从 `4096` 个 block 降为 `512` 个；寄存器从每线程 `40`（naive）增到 `54`，每 block 静态 shared memory 为 `9.22 KiB`。这说明复用收益在此形状上盖过了资源占用成本。`M=1` 时，大部分 register kernel 的行工作无效，反而最慢。NCU 的 naive 报告还提示全局 load 每个 32 字节 sector 平均只用 18 字节；这是进一步检查访问模式的线索，不能只凭这条提示把全部性能差距归因于合并访存。
+
+本次 cuBLAS 仍明显快于 register，但这是同形状、同输入/输出精度和同计时范围下的对照；它没有说明 cuBLAS 内部只采用了一种算法。进入[实验 06：Tensor Core 矩阵乘法入门](../06-tensor-core/README.md)时，FP16/BF16 输入与 FP32 累加另作一组，不能与这里严格 FP32 的速度混为一谈。

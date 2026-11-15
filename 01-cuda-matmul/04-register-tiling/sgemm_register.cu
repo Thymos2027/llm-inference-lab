@@ -115,6 +115,7 @@ __global__ void sgemm_register(const float* A, const float* B, float* C,
   }
 }
 
+#ifndef SGEMM_KERNELS_ONLY
 enum class Variant { Naive, Tiled, Register };
 
 const char* name(Variant variant) {
@@ -261,3 +262,4 @@ int main() {
   if (!run_case(64, 1024, 1024, true)) return EXIT_FAILURE;
   return run_case(1024, 1024, 1024, true) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
+#endif  // SGEMM_KERNELS_ONLY

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Naive', 'Coalesced', 'Tiled', 'Register', 'Nsight', 'NsightPractice')][string]$Lesson = 'Naive',
+    [ValidateSet('Naive', 'Coalesced', 'Tiled', 'Register', 'Nsight', 'NsightPractice', 'Transpose', 'SgemmCublas')][string]$Lesson = 'Naive',
     [switch]$Observe,
     [switch]$Benchmark,
     [switch]$BuildOnly,
@@ -56,6 +56,8 @@ $lessonPath = switch ($Lesson) {
     'Register' { '01-cuda-matmul\04-register-tiling\sgemm_register' }
     'Nsight' { '01-cuda-matmul\05-nsight-profiling\vector_add' }
     'NsightPractice' { '01-cuda-matmul\05-nsight-profiling\vector_add_practice' }
+    'Transpose' { '01-cuda-matmul\05-nsight-profiling\transpose' }
+    'SgemmCublas' { '01-cuda-matmul\05-nsight-profiling\sgemm_cublas' }
 }
 $source = Join-Path $root "$lessonPath.cu"
 $output = Join-Path $root "$lessonPath.exe"
@@ -63,12 +65,20 @@ $batch = Join-Path $root '.local\build-windows.cmd'
 $run = if ($BuildOnly) { '' } elseif ($Observe) { "`"$output`" --observe" } elseif ($Benchmark) { "`"$output`" --benchmark" } else { "`"$output`"" }
 $tmDefine = if ($Lesson -eq 'Register') { "-DTHREAD_TILE_M=$ThreadTileM " } else { '' }
 $unrollDefine = if ($Lesson -eq 'Register' -and $KUnroll -gt 0) { "-DREGISTER_K_UNROLL=$KUnroll " } else { '' }
-$lineInfo = if ($Lesson -in @('Nsight', 'NsightPractice')) { '-lineinfo ' } else { '' }
+$lineInfo = if ($Lesson -in @('Nsight', 'NsightPractice', 'Transpose', 'SgemmCublas')) { '-lineinfo ' } else { '' }
+$cublasLink = if ($Lesson -eq 'SgemmCublas') {
+    $cublasLib = Join-Path $envPrefix 'Library\lib\x64\cublas.lib'
+    if (-not (Test-Path -LiteralPath $cublasLib)) {
+        throw 'cuBLAS development files missing. Install libcublas-dev in .local/cuda-13.3.'
+    }
+    " -L`"$(Split-Path -Parent $cublasLib)`" -lcublas"
+} else { '' }
 @(
     '@echo off'
     "call `"$vcvars`" >nul"
     'if errorlevel 1 exit /b 1'
-    "`"$nvcc`" -O2 -std=c++17 -arch=$arch -Xcompiler /utf-8 $lineInfo$tmDefine$unrollDefine`"$source`" -o `"$output`""
+    "set `"PATH=$(Join-Path $envPrefix 'Library\bin');%PATH%`""
+    "`"$nvcc`" -O2 -std=c++17 -arch=$arch -Xcompiler /utf-8 $lineInfo$tmDefine$unrollDefine`"$source`" -o `"$output`"$cublasLink"
     'if errorlevel 1 exit /b 1'
     $run
 ) | Set-Content -LiteralPath $batch -Encoding Ascii

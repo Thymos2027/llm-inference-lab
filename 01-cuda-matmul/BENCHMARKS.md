@@ -95,6 +95,8 @@
 
 ## 如何复现并继续推进
 
+实验 05 另在 RTX 3060 上完成了严格 FP32 的同程序 cuBLAS 对照：`1024³` 的 register `TM=8` 为 `0.74646 ms`，cuBLAS `CUBLAS_COMPUTE_32F_PEDANTIC` 为 `0.34259 ms`，相差 `2.18×`。这与上文 RTX 5060 Ti 的历史表来自不同 GPU，不能直接相除。形状、正确性、计时口径和 profiler 证据见[实验 05](05-nsight-profiling/README.md)。
+
 在仓库根目录运行：
 
 ```powershell
