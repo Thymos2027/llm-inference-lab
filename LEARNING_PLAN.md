@@ -2,7 +2,7 @@
 
 本项目沿着你分享的建议，先学习 **CUDA SGEMM 与 Tensor Core**，再以 **nano-vLLM** 学习推理引擎；Triton 算子暂缓，之后再进入 Attention / MoE 专项和 vLLM Ascend。目标是能独立写对、测准、解释 GPU kernel，也能追踪请求在推理引擎中的完整路径，并用实验判断系统改动的效果。
 
-已有的 `01-cuda-matmul/` 同时承担分享建议里的“CUDA 基础”和“SGEMM”两部分，不为了对齐编号拆散已经完成的课程。默认先在 Windows 做 CUDA C++ 实验；Triton、nano-vLLM 的实际运行环境按其依赖确认，需要时再用 WSL / Linux。目录编号沿用原计划，当前推进顺序为 CUDA → nano-vLLM，Triton 留待后续。
+已有的 `01-cuda-matmul/` 同时承担分享建议里的“CUDA 基础”和“SGEMM”两部分，不为了对齐编号拆散已经完成的课程。CUDA C++ 实验与当前 nano-vLLM 单卡练习均在 Windows 原生环境运行；Triton 阶段的运行环境留待开始时确认。目录编号沿用原计划，当前推进顺序为 CUDA → nano-vLLM，Triton 留待后续。
 
 ## 怎么使用这份计划
 
@@ -34,9 +34,9 @@ llm-inference-lab/
 
 [实验 06](01-cuda-matmul/06-tensor-core/README.md)已完成 WMMA 单 tile、多 tile、FP16 输入量化区分、同精度 cuBLAS 对照与 Nsight 分析，作为 Tensor Core 入门阶段收束。非 16 倍数形状、BF16 和多 warp 数据复用留待后续，不把阶段性收束写成完整验收通过。Triton 暂缓，先进入[nano-vLLM](03-nano-vllm/README.md)。
 
-1. 固定上游源码版本和本机模型文件，核对运行依赖与 GPU 环境，先跑通原版的单卡 eager 示例。当前上游版本、模型位置与环境检查结果见[nano-vLLM 阶段说明](03-nano-vllm/README.md)。
+1. 已确认单独的 `D:\Coding\nano-vllm` 工作树、现有 Qwen3-0.6B 模型与 Windows `.venv`；单卡 eager 短生成已跑通。具体版本、兼容实现与测试范围见[nano-vLLM 阶段说明](03-nano-vllm/README.md)。
 2. 从 `example.py → LLMEngine.generate → step → Scheduler.schedule → ModelRunner.run → Scheduler.postprocess` 追踪一次请求，区分 prefill、decode 和请求完成时的状态变化。
-3. 在不改变调度策略的前提下，记录每步的请求数、安排的 token 数和 KV block 使用情况；确认输出仍正确，再比较同一模型与输入的行为和性能。
+3. 在不改变调度策略的前提下，记录每步的请求数、安排的 token 数和 KV block 使用情况；确认输出仍正确，再比较同一模型与输入的行为和性能。Windows 注意力替代实现的结果与上游 FlashAttention 路线分开记录。
 
 **本阶段完成标准：**能从请求到输出解释一次 prefill 和 decode，并用可复现日志说明调度与 KV cache 的状态变化。性能比较注明模型版本、输入、并发、GPU 与计时范围。
 
@@ -47,7 +47,7 @@ llm-inference-lab/
 | 0. C++ / CUDA 最小基础 | 贯穿 `01-cuda-matmul/` | 指针与数组、行主序、host/device、编译与启动、grid/block/thread、边界与报错 | 能在[实验 01](01-cuda-matmul/01-naive/README.md)中手算线程负责的 `C[row,col]`，解释 CPU 参考值与误差检查；哪里不懂就回到这里补。 |
 | 1. CUDA 矩阵乘法项目 | 01–05 已有代码、正确性检查、计时和 profiler 记录；实验 06 的 Tensor Core 入门部分已阶段性收束 | Naive → 合并访存 → shared memory → register tiling → 实验 05：Nsight / 同精度 cuBLAS 对照 → 实验 06：Tensor Core 入门 | 能解释[大方阵与 `M=1` 的差异](01-cuda-matmul/BENCHMARKS.md)，并用 profiler 证据解释至少一次优化。实验 06 的非整齐形状与 BF16 尚未完成；重返该专题时再完成完整验收。 |
 | 2. Triton kernels 项目 | [阶段说明已建](02-triton-kernels/README.md)，暂缓 | Vector Add → Fused Softmax → Matmul → Fused RMSNorm / SiLU×Mul；再考虑 Fused Attention | 每个算子与可信参考比较，覆盖边界形状；记录输入、dtype、计时范围和速度。至少一个融合实验说明少了哪些读写或 launch，以及实测是否获益。 |
-| 3. nano-vLLM 项目 | 已固定上游版本并确认本机 Qwen3-0.6B 文件；运行环境待搭建 | 跑通固定版本 → Scheduler / continuous batching → KV cache / block table / prefix cache → CUDA Graph 与算子融合 → chunked prefill | 能从请求到输出追踪一次 prefill 和 decode；留有日志或可视化、正确性检查，并在相同负载下比较 TTFT、TPOT、吞吐和显存。 |
+| 3. nano-vLLM 项目 | 已找到单独工作树、现有 Qwen3-0.6B 与 Windows `.venv`；单卡 eager 短生成通过 | 跑通固定版本 → Scheduler / continuous batching → KV cache / block table / prefix cache → CUDA Graph 与算子融合 → chunked prefill | 能从请求到输出追踪一次 prefill 和 decode；留有日志或可视化、正确性检查，并在相同负载下比较 TTFT、TPOT、吞吐和显存。 |
 | 4. Attention / MoE 专项 | 待开始 | Decode attention、GQA / KV 复用、Grouped GEMM、offloading；FP8 先分清存储格式与硬件计算能力 | 选一个明确瓶颈做受控实验，记录正确性、负载、硬件和性能变化；不要同时引入多个未验证优化。 |
 | 5. vLLM Ascend 迁移 | 待开始 | 对照已有 CUDA / nano-vLLM 经验阅读真实框架的调度、缓存和算子路径，再做 Profiling、Benchmark 与小改动 | 在可用设备上复现基线，对一个具体问题给出可检查的改动或分析报告；记录模型、精度、并发、延迟、吞吐和环境。 |
 

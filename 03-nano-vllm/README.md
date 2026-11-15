@@ -1,16 +1,17 @@
 # nano-vLLM：推理引擎源码与改造
 
-这是[学习计划](../LEARNING_PLAN.md)中的第三个项目阶段，目前优先于 Triton 推进。上游为 [GeeeekExplorer/nano-vllm](https://github.com/GeeeekExplorer/nano-vllm)。先固定上游提交、记录依赖和运行环境，在可用的 NVIDIA GPU 上运行原版示例与基准。
+这是[学习计划](../LEARNING_PLAN.md)中的第三个项目阶段，目前优先于 Triton 推进。上游为 [GeeeekExplorer/nano-vllm](https://github.com/GeeeekExplorer/nano-vllm)。本机已有单独的 `D:\Coding\nano-vllm` 工作树，当前先使用其中的 Windows 单卡兼容实现学习推理流程。
 
 ## 起点：2026-11-15 本机检查
 
-- 上游源码固定在提交 `bb823b3e06983d71485a8e1f23715ebd87d98ef8`（项目版本 `0.2.0`），只读学习副本放在被 Git 忽略的 `.local/nano-vllm-upstream/`。复现时以提交哈希为准，不依赖该本机副本。
-- Windows 本机模型位于 `C:\Users\gigappb\huggingface\Qwen3-0.6B\`，已有 `config.json`、tokenizer 文件和约 1.5 GB 的 `model.safetensors`；配置标明 `Qwen3ForCausalLM`、BF16。无需再次下载模型。上游 `example.py` 默认查找 Linux 风格的 `~/huggingface/Qwen3-0.6B/`，在实际运行环境中需指向这份现有文件。
-- 本机为 RTX 3060 8 GB（`sm_86`），Windows Python 为 3.12.16。当前未安装 `torch`、`triton`、`transformers`、`flash-attn`、`xxhash`，也没有可用的 WSL 发行版；尚未运行 nano-vLLM。上游 `pyproject.toml` 要求 Python 3.10–3.12 及上述依赖。先确定支持 CUDA 与这些依赖的 Linux 运行环境，再做原版基线。
+- `D:\Coding\nano-vllm` 的 HEAD 为 `bb823b3e06983d71485a8e1f23715ebd87d98ef8`（上游项目版本 `0.2.0`），`origin` 指向用户自己的 fork。Windows 兼容改动目前在该仓库的未提交工作树中；本页的运行结果对应这份工作树，不能仅凭上游提交哈希复现。
+- 模型位于 `C:\Users\gigappb\huggingface\Qwen3-0.6B\`，已有 `config.json`、tokenizer 文件和约 1.5 GB 的 `model.safetensors`；配置标明 `Qwen3ForCausalLM`、BF16。`example.py` 使用的 `~/huggingface/Qwen3-0.6B/` 在本机指向这份文件，无需再次下载。
+- 本机 RTX 3060 8 GB（`sm_86`）；该仓库已有 Windows `.venv`，其中 PyTorch `2.14.1+cu130` 检测到 CUDA，Transformers 为 `5.23.0`。Windows 单卡路径用 Gloo、PyTorch SDPA 注意力和未编译的 PyTorch 算子替代上游的 NCCL、FlashAttention 与 Triton；它适合先学习调度流程，不可直接用于上游性能对照。
+- `python -m unittest discover -s tests -v` 的三项 Windows 注意力检查通过。使用现有模型、`enforce_eager=True`、`tensor_parallel_size=1`、`max_model_len=max_num_batched_tokens=512`、`max_tokens=8` 的短生成也成功输出 8 个 token。尚未运行完整的 `example.py` 或基准。
 
 ## 首个可观察任务
 
-先用 `enforce_eager=True`、`tensor_parallel_size=1` 跑通上游 `example.py` 的 Qwen3-0.6B 示例，记录环境、输入和输出。源码阅读路线为 `example.py → nanovllm/llm.py → engine/llm_engine.py`：`generate()` 添加请求并反复调用 `step()`；每步由 `Scheduler.schedule()` 选择 prefill 或 decode，`ModelRunner` 执行计算，再由 `Scheduler.postprocess()` 更新序列和 KV block 状态。运行基线通过后，先只加观察日志，不改调度策略。
+从已有的 Windows 单卡短生成继续，源码阅读路线为 `example.py → nanovllm/llm.py → engine/llm_engine.py`：`generate()` 添加请求并反复调用 `step()`；每步由 `Scheduler.schedule()` 选择 prefill 或 decode，`ModelRunner` 执行计算，再由 `Scheduler.postprocess()` 更新序列和 KV block 状态。下一步先记录每步的请求、token 与 KV block 变化，不改调度策略。若要比较性能，先固定现有 Windows 兼容代码的版本与负载，并单独标明注意力实现不同。
 
 按以下顺序做可观察的小改动：
 
