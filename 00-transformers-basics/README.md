@@ -10,7 +10,7 @@
 4. **生成循环**：亲手写一个最小的“前向计算 → 选 token → 追加输入”循环，再与 `generate()` 对照。
 5. **KV cache**：比较有无缓存时的输入和计算，再回到 nano-vLLM 的 block table。
 
-每次只推进一个实验。当前是 **实验 01：tokenizer**。
+每次只推进一个实验。**实验 01、02 已完成**；下一步是实验 03：一次前向计算。
 
 ## 根目录 PyTorch 环境检查
 
@@ -43,8 +43,30 @@ uv sync --locked --python 3.12
 
 本机 2026-11-16 使用 Transformers 5.23.0 运行通过：普通文本得到 4 个 token ID `[9707, 11, 1879, 0]`，解码回 `Hello, world!`；其中显示为 `\u0120world` 的片段带有空格标记。聊天模板生成 17 个 token ID，包含用户和助手角色标记。本版本的 `apply_chat_template(..., tokenize=True)` 返回带 `input_ids` 和 `attention_mask` 的对象；这里的 mask 全为 1，表示这 17 个位置都是真实输入。具体 ID 与模板内容取决于 tokenizer 版本及模型文件。
 
+## 实验 02：模型与张量
+
+读取本机 Qwen3-0.6B 的 `config.json`，再把两句长短不同的文字编码成同一个批次。此实验只加载配置和 tokenizer，不加载约 1.5 GB 的模型权重，也不运行模型前向。仍在仓库根目录执行：
+
+```powershell
+uv sync --locked --python 3.12
+& .\.venv\Scripts\python.exe .\00-transformers-basics\02-model-tensors.py
+```
+
+模型放在别处时可加 `--model <模型目录>`。代码先打印配置中的 `vocab_size`、`hidden_size`、层数、注意力头数、最大位置数与 `torch_dtype`，然后打印 `input_ids` 和 `attention_mask`：
+
+- 两个张量的形状都是 `[批次大小, 序列长度]`。本机这次为 `(2, 5)`：两行分别对应两句文字，短句末尾补了一个位置。每一行的列数相同，方便组成一个批次。
+- `input_ids` 存词表索引，数据类型是 `torch.int64`；补齐位置放 `pad_token_id`。`attention_mask` 中 1 表示真实 token，0 表示补齐位置。本次第一行的 mask 是 `[1, 1, 1, 1, 0]`，第二行全为 1。实际 ID 和长度取决于 tokenizer 文件。
+- tokenizer 先在 CPU 生成张量；代码用 `.to(device)` 把**模型输入**移到可用的 CUDA 设备（没有 CUDA 时保留在 CPU）。两个张量移动后仍是整数，不会因设备变化而变成浮点数。
+- 此模型配置的 `hidden_size=1024`、`torch_dtype=bfloat16`。前者表示若加载模型，词向量输出的形状可推为 `[2, 5, 1024]`；这里只推算形状，没有生成该张量。后者描述模型权重的存储精度，不是 `input_ids` 的数据类型。
+
+**读代码时先回答：**`input_ids[0, 4]` 为什么不是第一句的真实 token？`attention_mask[0, 4]` 是多少？`(2, 5)` 的两个数字各代表什么？把输入移到 GPU 后，`input_ids.dtype` 会改变吗？
+
+本机 2026-11-16 使用 Transformers 5.23.0 与 PyTorch 2.14.1+cu130 运行通过：`input_ids`、`attention_mask` 均为 `(2, 5)`、`torch.int64`，并从 CPU 移到 `cuda:0`。下一实验才会加载模型权重，观察实际前向输出的 `logits`。
+
 ## 用 VS Code 断点调试
 
 用 VS Code 打开 `D:\Coding\llm-inference-lab` 文件夹，打开 [01-tokenizer.py](01-tokenizer.py)，在 `chat_text = ...` 这一行的左侧行号旁单击设置断点。按 **F5**，选择 **Transformers 01: tokenizer**；本仓库的 `.vscode/launch.json` 会使用根目录 `.venv` 运行此独立脚本。
 
 停住后在左侧 **Variables** 看 `messages` 与 `options`。按一次 **F10**，`chat_text` 出现；再按一次，`chat_encoded` 出现；再按一次，`chat_token_ids` 出现。在 **Watch** 可输入 `tokenizer.chat_template` 或 `chat_encoded["input_ids"]`。**F10** 执行当前行并停在下一行，**F11** 进入函数内部，**Shift+F11** 返回调用处，**F5** 继续到下一个断点。配置允许 F11 进入 Transformers 库代码；初学时先用 F10 理清本脚本的变量变化。
+
+实验 02 可打开 [02-model-tensors.py](02-model-tensors.py)，在 `model_inputs = ...` 设断点，按 **F5** 选择 **Transformers 02: model tensors**。停住时比较 `batch["input_ids"]`、`batch["attention_mask"]`、`input_ids.shape` 和 `input_ids.dtype`；按一次 **F10** 后再看 `model_inputs["input_ids"].device`，确认变化的是设备，而形状与数据类型不变。
