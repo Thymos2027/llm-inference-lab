@@ -10,7 +10,7 @@
 4. **生成循环**：亲手写一个最小的“前向计算 → 选 token → 追加输入”循环，再与 `generate()` 对照。
 5. **KV cache**：比较有无缓存时的输入和计算，再回到 nano-vLLM 的 block table。
 
-每次只推进一个实验。**实验 01–04 已完成**；下一步是实验 05：KV cache。
+每次只推进一个实验。**实验 01–05 已完成**；下一步可回到 nano-vLLM 观察它的缓存块管理。
 
 ## 根目录 PyTorch 环境检查
 
@@ -102,6 +102,25 @@ uv sync --locked --python 3.12
 
 本机 2026-11-16 使用 Transformers 5.23.0、PyTorch 2.14.1+cu130 与 Qwen3-0.6B 运行通过。手写循环的输入长度从 5 增至 12，依次选出 8 个新 token，解码为 `' Paris. The capital of France is also'`；`generate()` 给出完全相同的 8 个 ID。实际文字可能随模型文件或运行环境变化。
 
+## 实验 05：KV cache 如何减少重复计算
+
+沿用同一个模型和提示词，同时运行**不使用缓存**与**使用缓存**的贪心生成路径，逐步比较送入模型的输入长度。在仓库根目录执行：
+
+```powershell
+uv sync --locked --python 3.12
+& .\.venv\Scripts\python.exe .\00-transformers-basics\05-kv-cache.py
+```
+
+模型放在别处时可加 `--model <模型目录>`。脚本最多生成 4 个新 token；两条路径每一步都取最后位置 logits 的 `argmax`，并断言选出的 token ID 相同。
+
+- 第一步是 **prefill**：两条路径都送入完整的 5 个提示词 token。缓存路径设置 `use_cache=True`，从输出中取得 `past_key_values`；其中保存了已处理位置的 key/value 张量。
+- 第二步起是 **decode**：无缓存路径每次重新送入越来越长的完整序列；缓存路径只送入刚生成的 1 个 token，同时传入之前的 `past_key_values`。`attention_mask` 仍覆盖**完整上下文**，其长度随生成增长。`past_key_values.get_seq_length()` 可查看调用前已有多少个缓存位置。
+- 本机 2026-11-16 使用 Transformers 5.23.0、PyTorch 2.14.1+cu130 与 Qwen3-0.6B 运行通过。4 次前向中，无缓存输入长度为 `5, 6, 7, 8`，共送入 26 个 token 位置；缓存路径为 `5, 1, 1, 1`，共送入 8 个。两边生成的 ID 都是 `[12095, 13, 576, 6722]`，解码为 `' Paris. The capital'`。这些数字是**送入模型的 token 位置数**，不是运行时间或总计算量；缓存路径仍会对历史 key/value 做注意力计算。
+
+**读代码时先回答：**为什么第二步缓存路径只输入 1 个 token，却能利用整个提示词？第二步的 `cached_before` 为什么是 5？为什么脚本仍传入覆盖完整上下文的 `attention_mask`？若共生成 4 个 token，为什么最后一个新 token 尚未写入 `past_key_values`？
+
+回到 `D:\Coding\nano-vllm` 时，可先看 `nanovllm/engine/model_runner.py` 的 `prepare_decode()`：它也只把每条序列的 `last_token` 送入本轮模型计算。再看 `nanovllm/engine/block_manager.py` 中的块分配，以及序列的 `block_table`：这个表记录逻辑序列使用哪些物理 KV 缓存块，使旧位置的 key/value 可被继续读取。这里的 Transformers `past_key_values` 和 nano-vLLM 的块表服务于同一个复用目标，但内部数据结构不同；本实验没有运行或修改 nano-vLLM。
+
 ## 用 VS Code 断点调试
 
 用 VS Code 打开 `D:\Coding\llm-inference-lab` 文件夹，打开 [01-tokenizer.py](01-tokenizer.py)，在 `chat_text = ...` 这一行的左侧行号旁单击设置断点。按 **F5**，选择 **Transformers 01: tokenizer**；本仓库的 `.vscode/launch.json` 会使用根目录 `.venv` 运行此独立脚本。
@@ -113,3 +132,5 @@ uv sync --locked --python 3.12
 实验 03 可打开 [03-forward-logits.py](03-forward-logits.py)，在 `logits = outputs.logits` 设断点，按 **F5** 选择 **Transformers 03: forward logits**。停住时 `outputs` 已有值；用 **F10** 执行这一行后，在 **Debug Console** 输入 `logits.shape`，再用 **F10** 执行 `next_token_scores = ...`，输入 `next_token_scores.shape` 或 `next_token_scores.argmax().item()`。`logits` 很大，优先查看形状或单个位置的分数，不必展开整个张量。
 
 实验 04 可打开 [04-generation-loop.py](04-generation-loop.py)，在 `next_token_id = ...` 设断点，按 **F5** 选择 **Transformers 04: generation loop**。停住时看 `step`、`input_ids.shape`、`outputs.logits.shape`；按 **F10** 观察 `next_token_id`，再继续到下一轮，比较输入长度。执行完 `model.generate(...)` 后，比较 `new_token_ids` 和 `generate_new_ids`。
+
+实验 05 可打开 [05-kv-cache.py](05-kv-cache.py)，在 `cached_outputs = model(...)` 设断点，按 **F5** 选择 **Transformers 05: KV cache**。第一轮查看 `cached_input_ids.shape` 和 `past_key_values`；第二轮比较 `full_input_ids.shape`、`cached_input_ids.shape` 与 `cached_before`。执行该行后再看 `cached_outputs.past_key_values.get_seq_length()`，确认缓存长度增加。
