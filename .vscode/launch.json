@@ -50,6 +50,16 @@
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            "name": "Transformers 06: attention and FFN",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/00-transformers-basics/06-attention-ffn.py",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }

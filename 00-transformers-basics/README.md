@@ -10,7 +10,7 @@
 4. **生成循环**：亲手写一个最小的“前向计算 → 选 token → 追加输入”循环，再与 `generate()` 对照。
 5. **KV cache**：比较有无缓存时的输入和计算，再回到 nano-vLLM 的 block table。
 
-每次只推进一个实验。**实验 01–05 已完成**；下一步可回到 nano-vLLM 观察它的缓存块管理。
+每次只推进一个实验。**实验 01–05 已完成**；现在用实验 06 深入看一层内部的 Attention 与 FFN。
 
 ## 根目录 PyTorch 环境检查
 
@@ -121,6 +121,56 @@ uv sync --locked --python 3.12
 
 回到 `D:\Coding\nano-vllm` 时，可先看 `nanovllm/engine/model_runner.py` 的 `prepare_decode()`：它也只把每条序列的 `last_token` 送入本轮模型计算。再看 `nanovllm/engine/block_manager.py` 中的块分配，以及序列的 `block_table`：这个表记录逻辑序列使用哪些物理 KV 缓存块，使旧位置的 key/value 可被继续读取。这里的 Transformers `past_key_values` 和 nano-vLLM 的块表服务于同一个复用目标，但内部数据结构不同；本实验没有运行或修改 nano-vLLM。
 
+## 实验 06：token 进入一层后怎样计算 Attention 与 FFN
+
+实验 01–05 已经看到 token ID、logits 和逐 token 生成。这里将 Qwen3-0.6B 的**第 0 层**展开计算，并将结果与完整模型前向时捕获的同一层输出比较。运行：
+
+```powershell
+& .\.venv\Scripts\python.exe .\00-transformers-basics\06-attention-ffn.py
+```
+
+可用 `--prompt "..."` 换一段至少分成两个 token 的文字，或用 `--model <模型目录>` 指定本地权重。脚本固定 `attn_implementation="eager"`，便于看到矩阵乘法和注意力权重；这里不分析 PyTorch SDPA / FlashAttention 等融合实现的 kernel 性能。
+
+这段提示词本次分成 5 个 token，计算路径为：
+
+```text
+input_ids [1, 5] → 查 embedding 表 → x [1, 5, 1024]
+→ RMSNorm(x)
+→ Q [1, 16, 5, 128]、K/V [1, 8, 5, 128]
+→ Q/K 各自归一化（此模型使用 QK norm），再做 RoPE 位置旋转
+→ 每个 K/V 头供 2 个 Q 头使用（GQA）
+→ scores = QKᵀ / √128，形状 [1, 16, 5, 5]
+→ 遮住未来位置，按每一行 softmax → attention weights [1, 16, 5, 5]
+→ weights × V → 每个头的结果 [1, 16, 5, 128]
+→ 拼接 16 个头 → [1, 5, 2048]
+→ o_proj（权重 [1024, 2048]）→ [1, 5, 1024] → 与 x 相加
+→ RMSNorm → down_proj(SiLU(gate_proj(x)) × up_proj(x)) → 与输入相加
+```
+
+`[5, 5]` 中行是正在计算的 token 位置，列是它可以读取的历史 token 位置。例如第 3 行只能读取第 0–3 列；上三角被因果遮罩设为 0。每个 Q 头各有一张这样的权重表。`softmax` 后每行约等于 1，但权重不是模型最终对整个词表的概率。第 0 层的第 0 个头只是 16 个头中的一个，不能据单张权重表解释完整回答。
+
+Attention 是**跨 token 混合信息**：位置 `i` 的输出由它可见的 V 向量加权求和。此时还有 16 份各 128 维的头输出；拼接后是 2048 维，`o_proj` 把它们混合并映射回 1024 维，才能与该层输入 `x` 相加。`o_proj` 是多头注意力常见的输出投影，不是 Q/K/V 头数不同才需要；GQA 只影响 K/V 头如何供 Q 头使用。FFN 对**每个 token 位置分别**应用同一组参数；`gate_proj` 与 `up_proj` 都从 1024 维扩到 3072 维，逐元素相乘后由 `down_proj` 回到 1024 维。两部分各有一次残差相加，前面各有 RMSNorm。这里的 FFN 不是 `softmax`，也不直接让不同 token 相互通信。
+
+这里展开的是提示词的 **prefill**：5 个位置一起计算，分数矩阵是 `[1, 16, 5, 5]`。接上实验 05 的缓存路径后，每轮 **decode** 只产生一个新 Q，但要与包括历史缓存的全部 K 做点积；若历史共有 `L` 个可见位置，分数形状约为 `[1, 16, 1, L]`。KV cache 省去旧 token 的 Q/K/V 投影和旧位置的层计算，却没有省去新 token 读取历史 K/V 的注意力计算。
+
+### 这次前向的计算量与并行位置
+
+脚本末尾根据权重和张量形状估算密集矩阵乘法的乘加次数；按一次乘加约等于 2 FLOPs。对上述 5-token、单批次输入，得到：
+
+| 部分 | 单层计算量 | 可以怎样并行 |
+| --- | ---: | --- |
+| Q/K/V 与 `o_proj` | 62.915 MFLOPs | 5 个位置、输出通道和注意力头之间并行 |
+| `QKᵀ` 与 attention weights × V | 0.205 MFLOPs | 16 个头以及各查询/键位置之间并行 |
+| 门控 FFN 的三个投影 | 94.372 MFLOPs | 5 个位置和 3072 个中间通道之间并行 |
+
+所以**这个短提示词里 FFN 的密集乘法最多**；注意力的两次打分/加权乘法很小，但其 Q/K/V 与输出投影也要算入 Attention 部分。28 层合计约 **4.410 GFLOPs**，脚本的完整前向还对 5 个位置都运行 `lm_head`，约 **1.556 GFLOPs**。若只需最后位置的下一 token 分数，`lm_head` 约 **0.311 GFLOPs**。这些是运算量估算，不是实际耗时；不包含 RMSNorm、softmax、SiLU、内存读写或 kernel 启动。
+
+并行有两种边界：prefill 的多个 token 位置可以一起做大矩阵乘法，而 decode 每轮只输入一个新 token，必须等上一个 token 选出后才能继续；同一个 token 也必须按 28 层顺序处理。不过单层内的头、通道和多个请求仍可并行。此模型一层的 Attention/FFN 投影权重约 **31.46 MB**（BF16）；理想地只读取一次权重时，5-token prefill 对同一批权重做约 5 倍于单 token decode 的运算。因此短 decode 往往更受读权重速度与启动开销影响，不能仅凭 FLOPs 判断延迟。序列很长时，prefill 的注意力打分随长度平方增长，瓶颈也会变化。
+
+本机 2026-11-16 用 Transformers 5.23.0、PyTorch 2.14.1+cu130、RTX 3060 和本地 Qwen3-0.6B 运行：脚本分别核对手工计算的 Attention 输出和第 0 层输出，二者与模型对应结果的最大绝对差均为 `0.000000`。模型随后还有 27 层、最终 RMSNorm 和 `lm_head`，得到下一 token `' Paris'`。这个一致性检查覆盖当前短提示词和 eager 路径；更长输入、padding、KV cache 的遮罩形状由 Transformers 另行处理。
+
+**建议暂停检查：**为什么 K/V 只有 8 个头而 Q 有 16 个？为什么第 0 行只能注意第 0 个 token？如果把因果遮罩去掉，前面位置的表示会发生什么变化？FFN 中 `SiLU(gate) * up` 的形状是多少？
+
 ## 用 VS Code 断点调试
 
 用 VS Code 打开 `D:\Coding\llm-inference-lab` 文件夹，打开 [01-tokenizer.py](01-tokenizer.py)，在 `chat_text = ...` 这一行的左侧行号旁单击设置断点。按 **F5**，选择 **Transformers 01: tokenizer**；本仓库的 `.vscode/launch.json` 会使用根目录 `.venv` 运行此独立脚本。
@@ -134,3 +184,5 @@ uv sync --locked --python 3.12
 实验 04 可打开 [04-generation-loop.py](04-generation-loop.py)，在 `next_token_id = ...` 设断点，按 **F5** 选择 **Transformers 04: generation loop**。停住时看 `step`、`input_ids.shape`、`outputs.logits.shape`；按 **F10** 观察 `next_token_id`，再继续到下一轮，比较输入长度。执行完 `model.generate(...)` 后，比较 `new_token_ids` 和 `generate_new_ids`。
 
 实验 05 可打开 [05-kv-cache.py](05-kv-cache.py)，在 `cached_outputs = model(...)` 设断点，按 **F5** 选择 **Transformers 05: KV cache**。第一轮查看 `cached_input_ids.shape` 和 `past_key_values`；第二轮比较 `full_input_ids.shape`、`cached_input_ids.shape` 与 `cached_before`。执行该行后再看 `cached_outputs.past_key_values.get_seq_length()`，确认缓存长度增加。
+
+实验 06 可打开 [06-attention-ffn.py](06-attention-ffn.py)，按 **F5** 选择 **Transformers 06: attention and FFN**。先在 `scores = ...` 处查看 `q.shape`、`k_expanded.shape` 与 `scores.shape`；在 `weights = ...` 处看 `future` 和 `weights[0, 0]`；在 `attention_output = ...` 处看 `context.shape` 与 `attn.o_proj.weight.shape`，执行后再看 `attention_output.shape`；最后在 `gated = ...` 处看 `gate.shape`、`up.shape`。
