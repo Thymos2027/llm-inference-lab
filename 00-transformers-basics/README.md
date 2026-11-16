@@ -10,7 +10,7 @@
 4. **生成循环**：亲手写一个最小的“前向计算 → 选 token → 追加输入”循环，再与 `generate()` 对照。
 5. **KV cache**：比较有无缓存时的输入和计算，再回到 nano-vLLM 的 block table。
 
-每次只推进一个实验。**实验 01、02 已完成**；下一步是实验 03：一次前向计算。
+每次只推进一个实验。**实验 01、02 已完成**；当前是实验 03：一次前向计算。
 
 ## 根目录 PyTorch 环境检查
 
@@ -63,6 +63,26 @@ uv sync --locked --python 3.12
 
 本机 2026-11-16 使用 Transformers 5.23.0 与 PyTorch 2.14.1+cu130 运行通过：`input_ids`、`attention_mask` 均为 `(2, 5)`、`torch.int64`，并从 CPU 移到 `cuda:0`。下一实验才会加载模型权重，观察实际前向输出的 `logits`。
 
+## 实验 03：一次前向计算与 logits
+
+这次加载本机 Qwen3-0.6B 的模型权重，用 `The capital of France is` 做**一次**前向计算。在仓库根目录执行：
+
+```powershell
+uv sync --locked --python 3.12
+& .\.venv\Scripts\python.exe .\00-transformers-basics\03-forward-logits.py
+```
+
+模型放在别处时可加 `--model <模型目录>`。脚本只读取本地模型文件；使用配置中的 BF16 权重和 PyTorch SDPA 注意力实现，有 CUDA 时在 GPU 上计算。`model.eval()` 与 `torch.inference_mode()` 用于推理，`use_cache=False` 使这次实验只看前向输出。
+
+- 提示词被编码成 `(1, 5)` 的 `input_ids`：一个输入、五个 token。`model(**model_inputs)` 返回的 `outputs.logits` 是 `(1, 5, 151936)`，三个维度依次是**批次、输入位置、词表大小**。这里的每个位置都有一组覆盖整个词表的分数。
+- `logits[0, -1, :]` 取第一个输入的最后一个位置，形状是 `(151936,)`。它给出**接在整段提示词之后**的下一个 token 的分数；`logits[0, 0, :]` 则只基于第一个输入 token 对其后一个 token 打分。原始 logits 不是概率。
+- `torch.topk(..., k=5)` 只为观察分数最高的五个候选；它没有把 token 加回输入，也没有重复运行模型。本机这次最高分的 token 解码为 `' Paris'`（含前导空格），分数为 `17.5`。具体候选和分数可能随模型文件或运行环境变化。
+- 模型权重与本次 logits 的数据类型都是 `torch.bfloat16`，而 `input_ids` 仍是 `torch.int64`。权重中的浮点数用于计算；token ID 是索引。
+
+**读代码时先回答：**为什么 `logits` 比 `input_ids` 多一个维度？`logits[0, -1, :]` 中的 `-1` 和 `:` 各选中了什么？最高分 token 是完整回答吗？如果想得到第二个新 token，还需要做什么？
+
+本机 2026-11-16 使用 Transformers 5.23.0、PyTorch 2.14.1+cu130 与 Qwen3-0.6B 运行通过，得到上述形状与候选。实验 04 才会把选出的 token 追加到输入，构造生成循环。
+
 ## 用 VS Code 断点调试
 
 用 VS Code 打开 `D:\Coding\llm-inference-lab` 文件夹，打开 [01-tokenizer.py](01-tokenizer.py)，在 `chat_text = ...` 这一行的左侧行号旁单击设置断点。按 **F5**，选择 **Transformers 01: tokenizer**；本仓库的 `.vscode/launch.json` 会使用根目录 `.venv` 运行此独立脚本。
@@ -70,3 +90,5 @@ uv sync --locked --python 3.12
 停住后在左侧 **Variables** 看 `messages` 与 `options`。按一次 **F10**，`chat_text` 出现；再按一次，`chat_encoded` 出现；再按一次，`chat_token_ids` 出现。在 **Watch** 可输入 `tokenizer.chat_template` 或 `chat_encoded["input_ids"]`。**F10** 执行当前行并停在下一行，**F11** 进入函数内部，**Shift+F11** 返回调用处，**F5** 继续到下一个断点。配置允许 F11 进入 Transformers 库代码；初学时先用 F10 理清本脚本的变量变化。
 
 实验 02 可打开 [02-model-tensors.py](02-model-tensors.py)，在 `model_inputs = ...` 设断点，按 **F5** 选择 **Transformers 02: model tensors**。停住时比较 `batch["input_ids"]`、`batch["attention_mask"]`、`input_ids.shape` 和 `input_ids.dtype`；按一次 **F10** 后再看 `model_inputs["input_ids"].device`，确认变化的是设备，而形状与数据类型不变。
+
+实验 03 可打开 [03-forward-logits.py](03-forward-logits.py)，在 `logits = outputs.logits` 设断点，按 **F5** 选择 **Transformers 03: forward logits**。停住时 `outputs` 已有值；用 **F10** 执行这一行后，在 **Debug Console** 输入 `logits.shape`，再用 **F10** 执行 `next_token_scores = ...`，输入 `next_token_scores.shape` 或 `next_token_scores.argmax().item()`。`logits` 很大，优先查看形状或单个位置的分数，不必展开整个张量。

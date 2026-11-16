@@ -20,6 +20,16 @@
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            "name": "Transformers 03: forward logits",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/00-transformers-basics/03-forward-logits.py",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }

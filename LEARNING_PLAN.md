@@ -35,7 +35,7 @@ llm-inference-lab/
 
 [实验 06](01-cuda-matmul/06-tensor-core/README.md)已完成 WMMA 单 tile、多 tile、FP16 输入量化区分、同精度 cuBLAS 对照与 Nsight 分析，作为 Tensor Core 入门阶段收束。非 16 倍数形状、BF16 和多 warp 数据复用留待后续，不把阶段性收束写成完整验收通过。Triton 暂缓；nano-vLLM 的短生成与一次调度追踪已跑通，但源码学习先暂停，转到独立的 [Transformers 基础实验](00-transformers-basics/README.md)。
 
-实验 02 已完成：把两句文字组成批次，检查了 `config.json`、`input_ids`、形状、补齐、设备与数据类型。下一步做实验 03：一次前向计算与 `logits`；之后学习生成循环，再回来读 nano-vLLM。
+实验 02 已完成：把两句文字组成批次，检查了 `config.json`、`input_ids`、形状、补齐、设备与数据类型。当前推进实验 03：加载模型做一次前向计算，检查 `logits` 的形状及最后一个位置的候选 token；之后学习生成循环，再回来读 nano-vLLM。
 
 1. 已确认单独的 `D:\Coding\nano-vllm` 工作树、现有 Qwen3-0.6B 模型与 Windows `.venv`；单卡 eager 短生成已跑通。具体版本、兼容实现与测试范围见[nano-vLLM 阶段说明](03-nano-vllm/README.md)。
 2. 已用 [逐步追踪脚本](03-nano-vllm/trace_steps.py) 走通 `LLMEngine.step` 中的 `Scheduler.schedule → ModelRunner.run → Scheduler.postprocess` 路径，并在[阶段说明](03-nano-vllm/README.md)记录 prefill、decode、请求完成和 KV block 释放。下一步让提示词跨越 block 边界，再检查分配与前缀缓存复用。
@@ -50,7 +50,7 @@ llm-inference-lab/
 | 0. C++ / CUDA 最小基础 | 贯穿 `01-cuda-matmul/` | 指针与数组、行主序、host/device、编译与启动、grid/block/thread、边界与报错 | 能在[实验 01](01-cuda-matmul/01-naive/README.md)中手算线程负责的 `C[row,col]`，解释 CPU 参考值与误差检查；哪里不懂就回到这里补。 |
 | 1. CUDA 矩阵乘法项目 | 01–05 已有代码、正确性检查、计时和 profiler 记录；实验 06 的 Tensor Core 入门部分已阶段性收束 | Naive → 合并访存 → shared memory → register tiling → 实验 05：Nsight / 同精度 cuBLAS 对照 → 实验 06：Tensor Core 入门 | 能解释[大方阵与 `M=1` 的差异](01-cuda-matmul/BENCHMARKS.md)，并用 profiler 证据解释至少一次优化。实验 06 的非整齐形状与 BF16 尚未完成；重返该专题时再完成完整验收。 |
 | 2. Triton kernels 项目 | [阶段说明已建](02-triton-kernels/README.md)，暂缓 | Vector Add → Fused Softmax → Matmul → Fused RMSNorm / SiLU×Mul；再考虑 Fused Attention | 每个算子与可信参考比较，覆盖边界形状；记录输入、dtype、计时范围和速度。至少一个融合实验说明少了哪些读写或 launch，以及实测是否获益。 |
-| Transformers 基础先修 | [实验 01、02](00-transformers-basics/README.md)已创建并运行通过，nano-vLLM 源码学习暂缓 | tokenizer → 模型与张量 → 前向与 logits → 生成循环 → KV cache | 能解释输入如何变成 token ID，模型如何给出下一个 token 的分数，以及生成循环怎样产出文本。 |
+| Transformers 基础先修 | [实验 01、02](00-transformers-basics/README.md)已完成；实验 03 已创建并运行通过，待读代码；nano-vLLM 源码学习暂缓 | tokenizer → 模型与张量 → 前向与 logits → 生成循环 → KV cache | 能解释输入如何变成 token ID，模型如何给出下一个 token 的分数，以及生成循环怎样产出文本。 |
 | 3. nano-vLLM 项目 | 已找到单独工作树、现有 Qwen3-0.6B 与 Windows `.venv`；单卡 eager 短生成通过 | 跑通固定版本 → Scheduler / continuous batching → KV cache / block table / prefix cache → CUDA Graph 与算子融合 → chunked prefill | 能从请求到输出追踪一次 prefill 和 decode；留有日志或可视化、正确性检查，并在相同负载下比较 TTFT、TPOT、吞吐和显存。 |
 | 4. Attention / MoE 专项 | 待开始 | Decode attention、GQA / KV 复用、Grouped GEMM、offloading；FP8 先分清存储格式与硬件计算能力 | 选一个明确瓶颈做受控实验，记录正确性、负载、硬件和性能变化；不要同时引入多个未验证优化。 |
 | 5. vLLM Ascend 迁移 | 待开始 | 对照已有 CUDA / nano-vLLM 经验阅读真实框架的调度、缓存和算子路径，再做 Profiling、Benchmark 与小改动 | 在可用设备上复现基线，对一个具体问题给出可检查的改动或分析报告；记录模型、精度、并发、延迟、吞吐和环境。 |
@@ -59,7 +59,7 @@ llm-inference-lab/
 
 1. **先正确，再计时，再优化。** 每次改 kernel 都保留 CPU 或可信参考对照；边界形状不能省。
 2. **先对照，再归因。** 不把不同精度、不同形状、不同计时范围或不同程序的数字直接当作加速比。
-3. **一次只解决一个问题。** Transformers 基础实验 02 已完成；下一步理解模型前向输出，再学习生成循环，最后回到 nano-vLLM 调度和 KV cache。
+3. **一次只解决一个问题。** 当前读 Transformers 基础实验 03 的前向输出；之后学习生成循环，最后回到 nano-vLLM 调度和 KV cache。
 4. **保留失败实验。** 记录预期、结果和原因；没有收益也能说明方法适用范围。
 5. **以阶段验收为推进依据。** 已有源码不等于已经掌握；如果解释不了结果，就先回到该阶段复现和提问。
 
