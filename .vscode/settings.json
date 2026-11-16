@@ -4,6 +4,7 @@
         "*.cuh": "cuda-cpp"
     },
     "editor.occurrencesHighlight": "singleFile",
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
     "C_Cpp.intelliSenseEngine": "default",
     "C_Cpp.default.defines": ["__CUDACC__"],
     "C_Cpp.default.includePath": [

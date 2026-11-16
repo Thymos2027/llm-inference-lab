@@ -2,7 +2,7 @@
 
 这里按「一个概念、一个实验、一个可检查的结果」学习 GPU 编程与推理系统。
 
-整体路线、当前任务、[Triton kernels](02-triton-kernels/README.md)与 [nano-vLLM](03-nano-vllm/README.md) 两个后续项目，以及各阶段验收标准见[学习计划](LEARNING_PLAN.md)。
+整体路线、当前任务、[Transformers 基础](00-transformers-basics/README.md)、[Triton kernels](02-triton-kernels/README.md)与 [nano-vLLM](03-nano-vllm/README.md)，以及各阶段验收标准见[学习计划](LEARNING_PLAN.md)。
 
 ## 目前的成果
 
@@ -14,11 +14,12 @@
 
 ## 目录与学习顺序
 
-目前的矩阵乘法练习统一放在 [01-cuda-matmul](01-cuda-matmul/README.md)，每节实验各自保存源码和说明。后续项目是 [Triton kernels](02-triton-kernels/README.md) 与 [nano-vLLM](03-nano-vllm/README.md)：
+矩阵乘法练习统一放在 [01-cuda-matmul](01-cuda-matmul/README.md)，每节实验各自保存源码和说明。当前先做独立的 [Transformers 基础实验](00-transformers-basics/README.md)，再回到 [nano-vLLM](03-nano-vllm/README.md)；[Triton kernels](02-triton-kernels/README.md) 暂缓。
 
 各版本的实测数据见 [FP32 矩阵乘法性能记录](01-cuda-matmul/BENCHMARKS.md)。
 
 ```text
+00-transformers-basics/  # tokenizer、模型前向与生成循环的独立先修实验
 01-cuda-matmul/
 ├── 01-naive/             # 线程映射、边界与正确性
 ├── 02-coalesced-access/ # 访存模式与性能对照
@@ -38,6 +39,10 @@ scripts/                  # 共用的 Windows 安装与构建脚本
 3. 如何用随机数据和非整齐尺寸检验结果。
 
 完成后继续 [实验 02：合并访存与线程映射](01-cuda-matmul/02-coalesced-access/README.md)。它用相同的矩阵乘法和相同的计算量，比较相邻线程负责相邻列或相邻行的效果。接着做 [实验 03：Shared Memory Tiling](01-cuda-matmul/03-shared-memory-tiling/README.md)，研究一个 block 怎样合作保存和复用 A、B 的数据。然后做 [实验 04：Register Tiling](01-cuda-matmul/04-register-tiling/README.md)，研究一个线程怎样复用数据计算多个输出。完成这些 kernel 后，用 [实验 05：Nsight 性能分析](01-cuda-matmul/05-nsight-profiling/README.md) 建立“计时 → 采集 → 解释瓶颈”的方法，再进入 [实验 06：Tensor Core 入门](01-cuda-matmul/06-tensor-core/README.md)。
+
+## Python 学习环境
+
+Transformers 基础实验使用仓库根目录的 `pyproject.toml`、`uv.lock` 和被 Git 忽略的 `.venv/`。在根目录运行 `uv sync --locked --python 3.12` 后，可用 [PyTorch 环境检查](00-transformers-basics/check_torch.py)验证 CUDA。Windows 环境固定 PyTorch `2.14.1+cu130`；nano-vLLM 保留它自己的独立环境。
 
 ## 本机工具与 `.local` 目录
 
