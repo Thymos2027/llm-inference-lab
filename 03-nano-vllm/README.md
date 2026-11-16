@@ -4,7 +4,7 @@
 
 ## 本机状态：截至 2026-11-16
 
-- `D:\Coding\nano-vllm` 的 HEAD 为 `bb823b3e06983d71485a8e1f23715ebd87d98ef8`（上游项目版本 `0.2.0`），`origin` 指向用户自己的 fork；其原有 Windows 改动仍在未提交工作树中。已把独立分支上的改进与依赖锁定合并为[windows-native.patch](windows-native.patch)，换机时使用“上游提交 + 补丁”复现。改进代码已提交为[上游 PR #300](https://github.com/GeeeekExplorer/nano-vllm/pull/300)；PR 为保持精简，没有包含本地 `.python-version` 和 `uv.lock`。
+- `D:\Coding\nano-vllm` 的本地 `main` 已提交为 `8db1d75`，基于上游 `bb823b3e06983d71485a8e1f23715ebd87d98ef8`（项目版本 `0.2.0`），尚未推送到用户的 fork。相同源码与依赖锁定保存在[windows-native.patch](windows-native.patch)，换机时使用“上游提交 + 补丁”复现。改进代码已提交为[上游 PR #300](https://github.com/GeeeekExplorer/nano-vllm/pull/300)；PR 为保持精简，没有包含本地 `.python-version` 和 `uv.lock`。
 - 模型位于 `C:\Users\gigappb\huggingface\Qwen3-0.6B\`，已有 `config.json`、tokenizer 文件和约 1.5 GB 的 `model.safetensors`；配置标明 `Qwen3ForCausalLM`、BF16。`example.py` 使用的 `~/huggingface/Qwen3-0.6B/` 在本机指向这份文件，无需再次下载。
 - 本机 RTX 3060 8 GB（`sm_86`）；该仓库已有 Windows `.venv`，其中 PyTorch `2.14.1+cu130` 检测到 CUDA，Transformers 为 `5.23.0`。Windows 单卡路径用 Gloo、PyTorch SDPA 注意力和未编译的 PyTorch 算子替代上游的 NCCL、FlashAttention 与 Triton；它适合先学习调度流程，不可直接用于上游性能对照。
 - `python -m unittest discover -s tests -v` 的四项 Windows 注意力检查通过。使用现有模型、`enforce_eager=True`、`tensor_parallel_size=1`、`max_model_len=max_num_batched_tokens=512`、`max_tokens=8` 的两请求短生成也成功输出，每个请求 8 个 token。尚未运行完整的 `example.py` 或基准。
