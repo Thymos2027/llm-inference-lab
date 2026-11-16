@@ -11,10 +11,11 @@
 - 记录不同形状的限制：在 `1×1024×1024` 上，同一 register tiling 版本为 `0.060 ms`，慢于 tiled 版本的 `0.025 ms`。这组实验目前聚焦 FP32 矩阵乘法，尚不是完整 LLM 推理服务的吞吐测试。
 - 使用 CUDA Event 计时，并通过 Nsight Compute、Nsight Systems 和 SASS 检查性能现象；[TM 参数与指令分析](01-cuda-matmul/04-register-tiling/TM_ANALYSIS.md)。
 - 完成[实验 05](01-cuda-matmul/05-nsight-profiling/README.md)：在 RTX 3060 上，`4096²` shared memory transpose 对照 naive 为 `2.48×`；严格 FP32 的 `1024³` register SGEMM 为 `0.746 ms`，同范围 cuBLAS 为 `0.343 ms`。
+- 开始 [Triton 实验 01](02-triton-kernels/01-vector-add/README.md)：Windows RTX 3060 上的 FP32 Vector Addition 通过非整齐长度检查，并与 PyTorch 单 kernel 加法做 CUDA Graph 计时对照。
 
 ## 目录与学习顺序
 
-矩阵乘法练习统一放在 [01-cuda-matmul](01-cuda-matmul/README.md)，每节实验各自保存源码和说明。当前先做独立的 [Transformers 基础实验](00-transformers-basics/README.md)，再回到 [nano-vLLM](03-nano-vllm/README.md)；[Triton kernels](02-triton-kernels/README.md) 暂缓。
+矩阵乘法练习统一放在 [01-cuda-matmul](01-cuda-matmul/README.md)，每节实验各自保存源码和说明。[Triton kernels](02-triton-kernels/README.md) 已从 Vector Addition 开始；[Transformers 基础](00-transformers-basics/README.md)和 [nano-vLLM](03-nano-vllm/README.md) 保留各自进度。
 
 各版本的实测数据见 [FP32 矩阵乘法性能记录](01-cuda-matmul/BENCHMARKS.md)。
 
@@ -27,7 +28,7 @@
 ├── 04-register-tiling/ # 每线程多个输出与寄存器累加
 ├── 05-nsight-profiling/ # 用 Vector Add 学习 Nsight 性能分析
 └── 06-tensor-core/      # 混合精度矩阵乘法与 Tensor Core
-02-triton-kernels/       # Triton 算子与融合，阶段说明已建
+02-triton-kernels/       # Triton 算子与融合，实验 01 Vector Addition 已建
 03-nano-vllm/            # 推理引擎源码与改造，阶段说明已建
 scripts/                  # 共用的 Windows 安装与构建脚本
 ```
@@ -59,6 +60,7 @@ Transformers 基础实验使用仓库根目录的 `pyproject.toml`、`uv.lock` �
 | Visual Studio 2022 Build Tools | 安装在系统目录，由 `vswhere.exe` 定位 | 提供 Windows C++ 宿主编译器；构建脚本通过 `vcvars64.bat` 配置环境。 |
 | Conda | 安装在系统目录；本项目环境位于 `.local/cuda-13.3/` | 安装 CUDA 编译器、运行库和反汇编工具；`.local/conda-pkgs/` 是安装包缓存。 |
 | VS Code C/C++ 扩展 | `ms-vscode.cpptools` 1.35.6，安装在 VS Code 扩展目录 | 提供 CUDA C++ 源码的编辑器导航与 Outline；不影响命令行编译。 |
+| Triton Python 环境 | `.local/triton-win/`：Python 3.12、PyTorch `2.9.1+cu128`、`triton-windows 3.5.1.post24`；2026-11-16 在 RTX 3060 上验证 | 运行 [Triton 实验 01](02-triton-kernels/01-vector-add/README.md)；该环境与 CUDA C++ 编译环境分开。 |
 
 Nsight Compute 和 Nsight Systems 的程序在 5060 Ti 机上分别解压在 `E:\N`、`E:\S`，在 3060 机上经 conda 安装在 `D:\nsight`，都不是 `.local` 中的程序。`.local/profilers/` 保存路径文件、验证结果及示例报告；其中 `validation.json` 记录了 `ncu` 的 GPU 采样和 `nsys` 的 CUDA trace 均已通过。注意 `ncu` 访问 GPU 性能计数器默认需要管理员权限（报 `ERR_NVGPUCTRPERM`）：可在 NVIDIA App「系统 → 高级 → 开发者 → 管理 GPU 性能计数器」允许所有用户访问，或从管理员终端运行 `profile-windows.ps1`；`nsys` 普通权限即可。
 
