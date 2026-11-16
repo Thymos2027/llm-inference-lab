@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Transformers 01: tokenizer",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/00-transformers-basics/01-tokenizer.py",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        }
+    ]
+}
