@@ -1,10 +1,20 @@
 # nano-vLLM：推理引擎源码与改造
 
-这是[学习计划](../LEARNING_PLAN.md)中的第三个项目阶段，目前优先于 Triton 推进。上游为 [GeeeekExplorer/nano-vllm](https://github.com/GeeeekExplorer/nano-vllm)。本机已有单独的 `D:\Coding\nano-vllm` 工作树，当前先使用其中的 Windows 单卡兼容实现学习推理流程。
+这是[学习计划](../LEARNING_PLAN.md)中的第三个项目阶段，目前优先于 Triton 推进。上游为 [GeeeekExplorer/nano-vllm](https://github.com/GeeeekExplorer/nano-vllm)。本机在单独的 `D:\Coding\nano-vllm` 工作树中修改和运行引擎；本目录记录学习过程。
+
+## 两个仓库的分工
+
+| 位置 | 用途 |
+| --- | --- |
+| `llm-inference-lab/03-nano-vllm/` | 学习路线、实验负载、运行记录、分析与结论。记录所用的 nano-vLLM 提交哈希，不保存引擎源码副本。 |
+| [`Thymos2027/nano-vllm`](https://github.com/Thymos2027/nano-vllm)（本机 `D:\Coding\nano-vllm`） | 引擎源码、Windows 兼容实现、依赖锁定、测试和上游 PR 分支；是代码的唯一维护位置。 |
+| `~/huggingface/Qwen3-0.6B/` | 模型权重与 tokenizer，保存在 Git 仓库之外。 |
+
+修改引擎时在 nano-vLLM 仓库提交；做完实验后在本目录记录负载、结果和该提交。两边分别维护 Git 历史，不把引擎源码纳入学习仓库的 Git 跟踪。`llm-inference-lab/.local/nano-vllm-pr/` 只是为上游 PR 创建的、被忽略的临时 Git worktree，属于同一个 nano-vLLM 仓库。
 
 ## 本机状态：截至 2026-11-16
 
-- `D:\Coding\nano-vllm` 的本地 `main` 已提交为 `8db1d75`，基于上游 `bb823b3e06983d71485a8e1f23715ebd87d98ef8`（项目版本 `0.2.0`），尚未推送到用户的 fork。相同源码与依赖锁定保存在[windows-native.patch](windows-native.patch)，换机时使用“上游提交 + 补丁”复现。改进代码已提交为[上游 PR #300](https://github.com/GeeeekExplorer/nano-vllm/pull/300)；PR 为保持精简，没有包含本地 `.python-version` 和 `uv.lock`。
+- `D:\Coding\nano-vllm` 的 `main` 为已推送的 `8db1d75`，基于上游 `bb823b3e06983d71485a8e1f23715ebd87d98ef8`（项目版本 `0.2.0`）。Windows 兼容代码也已提交为[上游 PR #300](https://github.com/GeeeekExplorer/nano-vllm/pull/300)；PR 为保持精简，没有包含 fork `main` 中的 `.python-version` 和 `uv.lock`。
 - 模型位于 `C:\Users\gigappb\huggingface\Qwen3-0.6B\`，已有 `config.json`、tokenizer 文件和约 1.5 GB 的 `model.safetensors`；配置标明 `Qwen3ForCausalLM`、BF16。`example.py` 使用的 `~/huggingface/Qwen3-0.6B/` 在本机指向这份文件，无需再次下载。
 - 本机 RTX 3060 8 GB（`sm_86`）；该仓库已有 Windows `.venv`，其中 PyTorch `2.14.1+cu130` 检测到 CUDA，Transformers 为 `5.23.0`。Windows 单卡路径用 Gloo、PyTorch SDPA 注意力和未编译的 PyTorch 算子替代上游的 NCCL、FlashAttention 与 Triton；它适合先学习调度流程，不可直接用于上游性能对照。
 - `python -m unittest discover -s tests -v` 的四项 Windows 注意力检查通过。使用现有模型、`enforce_eager=True`、`tensor_parallel_size=1`、`max_model_len=max_num_batched_tokens=512`、`max_tokens=8` 的两请求短生成也成功输出，每个请求 8 个 token。尚未运行完整的 `example.py` 或基准。
@@ -16,16 +26,13 @@
 ```powershell
 $lab = (Resolve-Path .).Path
 $nano = Join-Path (Split-Path $lab -Parent) 'nano-vllm'
-$patch = Join-Path $lab '03-nano-vllm\windows-native.patch'
-git clone https://github.com/GeeeekExplorer/nano-vllm.git $nano
-git -C $nano checkout --detach bb823b3e06983d71485a8e1f23715ebd87d98ef8
-git -C $nano apply --check $patch
-git -C $nano apply $patch
+git clone https://github.com/Thymos2027/nano-vllm.git $nano
+git -C $nano checkout --detach 8db1d75134717bdee43b52d1ad33cd0d9898a7f4
 Set-Location $nano
 uv sync --locked --python 3.12
 ```
 
-补丁包含 `.python-version`、`pyproject.toml` 和 `uv.lock`：Windows 使用官方 PyTorch CUDA 13.0 包，跳过 FlashAttention / Triton 依赖；单卡分布式初始化用 Gloo 并关闭 libuv rendezvous，注意力改由 PyTorch SDPA 计算。`uv sync` 会在新设备下载所需软件包并创建 `.venv`；本机已有环境，无须重建或重复下载。补丁仅适用于上面的上游提交，且不包含模型权重。
+该提交包含 `.python-version`、`pyproject.toml` 和 `uv.lock`：Windows 使用官方 PyTorch CUDA 13.0 包，跳过 FlashAttention / Triton 依赖；单卡分布式初始化用 Gloo 并关闭 libuv rendezvous，注意力改由 PyTorch SDPA 计算。`uv sync` 会在新设备下载所需软件包并创建 `.venv`；本机已有环境，无须重建或重复下载。仓库不包含模型权重。
 
 把现有 Qwen3-0.6B 模型**整目录**复制到新设备的 `$HOME\huggingface\Qwen3-0.6B\`，包括 `model.safetensors`、`config.json` 和 tokenizer 文件。若模型放在别处，下面的短生成通过 `$modelPath` 指向它，无须修改源码。先检查 GPU 包与注意力实现：
 
@@ -68,4 +75,4 @@ print(llm.generate(["Hello, Nano-vLLM."],
 3. **CUDA Graph / 算子融合**：在同一负载下比较 eager、Graph 和融合算子的延迟与正确性。
 4. **Chunked prefill**：改变 chunk size 与并发，测 TTFT、TPOT、吞吐和尾延迟。
 
-本目录保存自己的实验代码、日志说明、结果与上游改动记录。不要把不明版本的上游源码直接复制进来。每次只改一个因素，先确认输出正确，再比较同一模型、同一输入和同一硬件上的性能。
+本目录保存实验脚本、日志说明、结果和对应的引擎提交哈希；引擎源码改动留在独立的 nano-vLLM 仓库。每次只改一个因素，先确认输出正确，再比较同一模型、同一输入和同一硬件上的性能。
