@@ -10,7 +10,7 @@
 4. **生成循环**：亲手写一个最小的“前向计算 → 选 token → 追加输入”循环，再与 `generate()` 对照。
 5. **KV cache**：比较有无缓存时的输入和计算，再回到 nano-vLLM 的 block table。
 
-每次只推进一个实验。**实验 01、02 已完成**；当前是实验 03：一次前向计算。
+每次只推进一个实验。**实验 01–04 已完成**；下一步是实验 05：KV cache。
 
 ## 根目录 PyTorch 环境检查
 
@@ -83,6 +83,25 @@ uv sync --locked --python 3.12
 
 本机 2026-11-16 使用 Transformers 5.23.0、PyTorch 2.14.1+cu130 与 Qwen3-0.6B 运行通过，得到上述形状与候选。实验 04 才会把选出的 token 追加到输入，构造生成循环。
 
+## 实验 04：亲手写生成循环
+
+沿用实验 03 的 Qwen3-0.6B 和 `The capital of France is`，最多生成 8 个新 token。在仓库根目录执行：
+
+```powershell
+uv sync --locked --python 3.12
+& .\.venv\Scripts\python.exe .\00-transformers-basics\04-generation-loop.py
+```
+
+模型放在别处时可加 `--model <模型目录>`。脚本只读取本地模型文件，默认使用 CUDA（若可用），并在 `eval()` 和 `torch.inference_mode()` 下运行。
+
+- 每一步都将**当前完整的** `input_ids` 和 `attention_mask` 送入模型，取 `logits[:, -1, :]`，用 `argmax` 选择分数最高的下一个 token。这是贪心选择，不是采样。
+- `torch.cat` 把选中的 token ID 加到 `input_ids` 末尾，同时给 `attention_mask` 加一个 1。下一步输入长度因此增加 1；如果选中结束 token，则提前停下。这里 `use_cache=False`，每次重新计算完整输入，方便看清循环；缓存留到实验 05。
+- 最后对同一提示词调用 `model.generate(max_new_tokens=8, do_sample=False, use_cache=False)`。脚本打印两边的新 token ID 和解码结果，并断言它们逐个相同。`generate()` 返回的序列包含原提示词，所以比较前先切出新增部分。
+
+**读代码时先回答：**第一次与第二次前向的输入长度分别是多少？为什么只取最后一个位置的 logits？只追加 `input_ids` 而不追加 `attention_mask` 会怎样？`max_new_tokens=8` 是否意味着输出一定有 8 个 token？
+
+本机 2026-11-16 使用 Transformers 5.23.0、PyTorch 2.14.1+cu130 与 Qwen3-0.6B 运行通过。手写循环的输入长度从 5 增至 12，依次选出 8 个新 token，解码为 `' Paris. The capital of France is also'`；`generate()` 给出完全相同的 8 个 ID。实际文字可能随模型文件或运行环境变化。
+
 ## 用 VS Code 断点调试
 
 用 VS Code 打开 `D:\Coding\llm-inference-lab` 文件夹，打开 [01-tokenizer.py](01-tokenizer.py)，在 `chat_text = ...` 这一行的左侧行号旁单击设置断点。按 **F5**，选择 **Transformers 01: tokenizer**；本仓库的 `.vscode/launch.json` 会使用根目录 `.venv` 运行此独立脚本。
@@ -92,3 +111,5 @@ uv sync --locked --python 3.12
 实验 02 可打开 [02-model-tensors.py](02-model-tensors.py)，在 `model_inputs = ...` 设断点，按 **F5** 选择 **Transformers 02: model tensors**。停住时比较 `batch["input_ids"]`、`batch["attention_mask"]`、`input_ids.shape` 和 `input_ids.dtype`；按一次 **F10** 后再看 `model_inputs["input_ids"].device`，确认变化的是设备，而形状与数据类型不变。
 
 实验 03 可打开 [03-forward-logits.py](03-forward-logits.py)，在 `logits = outputs.logits` 设断点，按 **F5** 选择 **Transformers 03: forward logits**。停住时 `outputs` 已有值；用 **F10** 执行这一行后，在 **Debug Console** 输入 `logits.shape`，再用 **F10** 执行 `next_token_scores = ...`，输入 `next_token_scores.shape` 或 `next_token_scores.argmax().item()`。`logits` 很大，优先查看形状或单个位置的分数，不必展开整个张量。
+
+实验 04 可打开 [04-generation-loop.py](04-generation-loop.py)，在 `next_token_id = ...` 设断点，按 **F5** 选择 **Transformers 04: generation loop**。停住时看 `step`、`input_ids.shape`、`outputs.logits.shape`；按 **F10** 观察 `next_token_id`，再继续到下一轮，比较输入长度。执行完 `model.generate(...)` 后，比较 `new_token_ids` 和 `generate_new_ids`。
