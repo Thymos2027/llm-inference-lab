@@ -60,6 +60,16 @@
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            "name": "nano-vLLM 01: request lifecycle",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/03-nano-vllm/trace_steps.py",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }

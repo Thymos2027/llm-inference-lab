@@ -2,6 +2,10 @@
 
 这是[学习计划](../LEARNING_PLAN.md)中的第三个项目阶段，目前优先于 Triton 推进。上游为 [GeeeekExplorer/nano-vllm](https://github.com/GeeeekExplorer/nano-vllm)。本机在单独的 `D:\Coding\nano-vllm` 工作树中修改和运行引擎；本目录记录学习过程。
 
+## 当前学习入口
+
+2026-11-17 开始按重点推进：[第一课：请求到输出](01-request-lifecycle.md)。顺序为 prefill/decode → 分页 KV cache → 前缀缓存 → 调度与 chunked prefill → 性能优化。第一课脚本已于当日复跑通过，学习验收由自己解释日志完成。
+
 ## 两个仓库的分工
 
 | 位置 | 用途 |
@@ -73,7 +77,7 @@ print(llm.generate(["Hello, Nano-vLLM."],
 从本仓库根目录运行（可用 `--model` 指定其他模型目录）：
 
 ```powershell
-& D:\Coding\nano-vllm\.venv\Scripts\python.exe .\03-nano-vllm\trace_steps.py
+uv run .\03-nano-vllm\trace_steps.py
 ```
 
 本次实际运行通过末尾的 token 数与 KV block 释放检查，关键状态如下；采样文字可能随环境变化：
