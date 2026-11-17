@@ -12,6 +12,8 @@
 
 每次只推进一个实验。**实验 01–05 已完成**；现在用实验 06 深入看一层内部的 Attention 与 FFN。
 
+想把整个请求连起来读，见[从 prompt 到第一个新 token 的完整路径](PROMPT_TO_FIRST_TOKEN.md)：以同一个 5-token 输入依次解释 tokenizer、embedding、28 层、最终归一化、`lm_head` 和贪心选择。
+
 ## 根目录 PyTorch 环境检查
 
 仓库根目录的 `pyproject.toml` 固定了 Windows CUDA 13.0 版 PyTorch。先在根目录运行以下命令，确认 PyTorch 能找到 GPU，并完成一个小矩阵乘法：
@@ -123,7 +125,7 @@ uv sync --locked --python 3.12
 
 ## 实验 06：token 进入一层后怎样计算 Attention 与 FFN
 
-实验 01–05 已经看到 token ID、logits 和逐 token 生成。这里将 Qwen3-0.6B 的**第 0 层**展开计算，并将结果与完整模型前向时捕获的同一层输出比较。运行：
+实验 01–05 已经看到 token ID、logits 和逐 token 生成。这里将 Qwen3-0.6B 的**第 0 层**展开计算，并将结果与完整模型前向时捕获的同一层输出比较。逐层前后的衔接见[完整路径说明](PROMPT_TO_FIRST_TOKEN.md)。运行：
 
 ```powershell
 & .\.venv\Scripts\python.exe .\00-transformers-basics\06-attention-ffn.py
