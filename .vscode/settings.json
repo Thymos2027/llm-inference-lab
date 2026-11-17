@@ -1,4 +1,7 @@
 {
+    "files.exclude": {"**/.local": true},
+    "files.watcherExclude": {"**/.local/**": true},
+    "search.exclude": {"**/.local/**": true},
     "files.associations": {
         "*.cu": "cuda-cpp",
         "*.cuh": "cuda-cpp"
