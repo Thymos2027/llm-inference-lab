@@ -1,6 +1,6 @@
 # 学习计划：从 CUDA 基础到 LLM 推理系统
 
-本项目沿着你分享的建议，先学习 **CUDA SGEMM 与 Tensor Core**，再开展 **Triton 算子**、**Transformers 基础**与 **nano-vLLM** 的练习，之后进入 Attention / MoE 专项和 vLLM Ascend。目标是能独立写对、测准、解释 GPU kernel，也能追踪请求在推理引擎中的完整路径，并用实验判断系统改动的效果。
+本项目沿着你分享的建议，学习 **PyTorch 推理运行时**、**CUDA SGEMM 与 Tensor Core**，再开展 **Triton 算子**、**Transformers 基础**与 **nano-vLLM** 的练习，之后进入 Attention / MoE 专项和 vLLM Ascend。目标是能独立写对、测准、解释 GPU kernel，也能追踪请求在推理引擎中的完整路径，并用实验判断系统改动的效果。
 
 已有的 `01-cuda-matmul/` 同时承担分享建议里的“CUDA 基础”和“SGEMM”两部分，不为了对齐编号拆散已经完成的课程。CUDA C++、Transformers、nano-vLLM 单卡练习和 Triton 的首个算子均在 Windows 原生环境运行。目录编号沿用原计划；用户已过完阶段 00 与 01；当前推进阶段 03 nano-vLLM，Triton 保留现有进度。
 
@@ -16,6 +16,7 @@
 ```text
 llm-inference-lab/
 ├── LEARNING_PLAN.md               # 本路线与阶段验收
+├── 00-pytorch-inference-basics/  # 张量语义、CUDA 运行时、Profiler 与引擎接口
 ├── 00-transformers-basics/       # tokenizer、模型前向与生成循环的独立先修实验
 ├── 01-cuda-matmul/                # CUDA 基础、FP32 SGEMM 与 Tensor Core 入门
 │   ├── 01-naive/
@@ -31,7 +32,11 @@ llm-inference-lab/
 
 原建议把 CUDA 基础、SGEMM 分成两个顶层目录，因此 Triton 和 nano-vLLM 分别编号为 03、04；这里把前两者合并，编号相应前移。原建议的 `05-benchmarks/` 与 `notes/` 暂不另建：现有 [SGEMM 性能记录](01-cuda-matmul/BENCHMARKS.md)和每节 README 已在保存结果与解释。跨项目比较真正出现时，再建立根目录 `benchmarks/`，并注明统一的测试负载与环境。nano-vLLM 上游源码以固定版本单独获取，本仓库的 `03-nano-vllm/` 保存学习记录、实验代码和改动说明，不直接混入未注明版本的上游快照。
 
-## 当前任务：nano-vLLM 的 prefill、decode 与 KV block 生命周期
+## 当前任务：PyTorch 推理基础实验 01
+
+2026-11-18：为“熟练使用 PyTorch 进行推理引擎开发维护”的求职目标增加 [PyTorch 推理基础](00-pytorch-inference-basics/README.md)。先完成实验 01，能够根据 shape、stride、data pointer 和写入后的联动判断 view 与 copy；再逐节进入 device/dtype、Module 状态、CUDA 计时、显存、Profiler、自定义算子、图捕获和 KV cache。每次只推进一节，并保留一次有意制造和修复的错误。
+
+## 后续任务：nano-vLLM 的 prefill、decode 与 KV block 生命周期
 
 2026-11-17：用户确认已过完目录 00 和 01，现在进入阶段 03。先完成 [第一课：请求到输出](03-nano-vllm/01-request-lifecycle.md)，用已有追踪脚本解释两请求的 prefill、decode、完成与缓存释放。随后依次学习跨 block 分配、前缀复用、调度与 chunked prefill，最后研究性能优化。一次只推进一课。
 
@@ -49,6 +54,7 @@ Transformers 实验 01–05 已有可运行代码和结果：tokenizer、模型�
 
 | 阶段 | 仓库状态 | 实验主线 | 进入下一阶段前能交出的结果 |
 | --- | --- | --- | --- |
+| PyTorch 推理基础 | [实验 01–13](00-pytorch-inference-basics/README.md)已有首版可运行代码，待逐节学习和记录 | storage / stride → Module 状态 → inference mode → CUDA 计时与显存 → mixed precision → batching → Profiler → custom op → compile → KV cache | 能定位 device/dtype/layout 错误，正确测量 GPU，解释缓存分配器与图中断，并用 PyTorch 参考实现验收自定义算子和增量 decode。 |
 | 0. C++ / CUDA 最小基础 | 贯穿 `01-cuda-matmul/` | 指针与数组、行主序、host/device、编译与启动、grid/block/thread、边界与报错 | 能在[实验 01](01-cuda-matmul/01-naive/README.md)中手算线程负责的 `C[row,col]`，解释 CPU 参考值与误差检查；哪里不懂就回到这里补。 |
 | 1. CUDA 矩阵乘法项目 | 01–05 已有代码、正确性检查、计时和 profiler 记录；实验 06 的 Tensor Core 入门部分已阶段性收束 | Naive → 合并访存 → shared memory → register tiling → 实验 05：Nsight / 同精度 cuBLAS 对照 → 实验 06：Tensor Core 入门 | 能解释[大方阵与 `M=1` 的差异](01-cuda-matmul/BENCHMARKS.md)，并用 profiler 证据解释至少一次优化。实验 06 的非整齐形状与 BF16 尚未完成；重返该专题时再完成完整验收。 |
 | 2. Triton kernels 项目 | [Vector Addition](02-triton-kernels/01-vector-add/README.md) 已在 Windows RTX 3060 上通过正确性与计时；Fused Softmax 待开始 | Vector Add → Fused Softmax → Matmul → Fused RMSNorm / SiLU×Mul；再考虑 Fused Attention | 每个算子与可信参考比较，覆盖边界形状；记录输入、dtype、计时范围和速度。至少一个融合实验说明少了哪些读写或 launch，以及实测是否获益。 |

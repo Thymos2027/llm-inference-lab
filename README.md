@@ -2,7 +2,7 @@
 
 这里按「一个概念、一个实验、一个可检查的结果」学习 GPU 编程与推理系统。
 
-整体路线、当前任务、[Transformers 基础](00-transformers-basics/README.md)、[Triton kernels](02-triton-kernels/README.md)与 [nano-vLLM](03-nano-vllm/README.md)，以及各阶段验收标准见[学习计划](LEARNING_PLAN.md)。
+整体路线、当前任务、[PyTorch 推理基础](00-pytorch-inference-basics/README.md)、[Transformers 基础](00-transformers-basics/README.md)、[Triton kernels](02-triton-kernels/README.md)与 [nano-vLLM](03-nano-vllm/README.md)，以及各阶段验收标准见[学习计划](LEARNING_PLAN.md)。
 
 ## 目前的成果
 
@@ -15,11 +15,12 @@
 
 ## 目录与学习顺序
 
-矩阵乘法练习统一放在 [01-cuda-matmul](01-cuda-matmul/README.md)，每节实验各自保存源码和说明。[Triton kernels](02-triton-kernels/README.md) 已从 Vector Addition 开始；[Transformers 基础](00-transformers-basics/README.md)和 [nano-vLLM](03-nano-vllm/README.md) 保留各自进度。
+求职补强使用 [PyTorch 推理基础](00-pytorch-inference-basics/README.md)，覆盖张量语义、CUDA 运行时、性能诊断、自定义算子和最小 KV-cache 运行时。矩阵乘法练习统一放在 [01-cuda-matmul](01-cuda-matmul/README.md)，每节实验各自保存源码和说明。[Triton kernels](02-triton-kernels/README.md) 已从 Vector Addition 开始；[Transformers 基础](00-transformers-basics/README.md)和 [nano-vLLM](03-nano-vllm/README.md) 保留各自进度。
 
 各版本的实测数据见 [FP32 矩阵乘法性能记录](01-cuda-matmul/BENCHMARKS.md)。
 
 ```text
+00-pytorch-inference-basics/ # 面向推理引擎开发维护的 PyTorch 基础
 00-transformers-basics/  # tokenizer、模型前向与生成循环的独立先修实验
 01-cuda-matmul/
 ├── 01-naive/             # 线程映射、边界与正确性
