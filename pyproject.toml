@@ -14,6 +14,15 @@ dependencies = [
 torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
 nano-vllm = { path = "../nano-vllm", editable = true }
 
+[tool.uv]
+# nano-vLLM imports Windows fallback implementations in this lab. Its upstream
+# metadata still lists the Linux-only Triton and FlashAttention packages as
+# unconditional dependencies, so keep them out of the Windows environment.
+override-dependencies = [
+    "flash-attn; sys_platform != 'win32'",
+    "triton>=3.0.0; sys_platform != 'win32'",
+]
+
 [[tool.uv.index]]
 name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
